@@ -1,7 +1,8 @@
+
 import express from 'express';
 import dotenv from 'dotenv';
 import axios from 'axios';
-import { Server, Keypair, Asset, Operation, TransactionBuilder, Memo } from '@stellar/stellar-sdk';
+import StellarSdk from '@stellar/stellar-sdk';
 
 dotenv.config();
 const app = express();
@@ -10,6 +11,13 @@ app.use(express.json());
 const PI_API_KEY = process.env.PI_API_KEY;
 const APP_PUBLIC_KEY = process.env.APP_PUBLIC_KEY;
 const APP_PRIVATE_KEY = process.env.APP_PRIVATE_KEY;
+
+const Server = StellarSdk.Server;
+const Keypair = StellarSdk.Keypair;
+const Asset = StellarSdk.Asset;
+const Operation = StellarSdk.Operation;
+const TransactionBuilder = StellarSdk.TransactionBuilder;
+const Memo = StellarSdk.Memo;
 
 const stellarServer = new Server('https://api.testnet.minepi.com');
 
@@ -30,23 +38,14 @@ app.post('/api/a2u-test', async (req, res) => {
   }
 
   try {
-    // 1. Tạo thanh toán A2U từ Pi API
-    const body = {
-      amount,
-      memo,
-      metadata: { test: true },
-      uid
-    };
-
+    const body = { amount, memo, metadata: { test: true }, uid };
     const paymentRes = await axiosClient.post('/v2/payments', body);
     const { identifier, recipient } = paymentRes.data;
 
-    // 2. Load tài khoản app
     const appAccount = await stellarServer.loadAccount(APP_PUBLIC_KEY);
     const baseFee = await stellarServer.fetchBaseFee();
     const timebounds = await stellarServer.fetchTimebounds(180);
 
-    // 3. Tạo giao dịch
     const tx = new TransactionBuilder(appAccount, {
       fee: baseFee.toString(),
       networkPassphrase: 'Pi Testnet',
@@ -60,14 +59,11 @@ app.post('/api/a2u-test', async (req, res) => {
       .addMemo(Memo.text(identifier))
       .build();
 
-    // 4. Ký giao dịch
     const keypair = Keypair.fromSecret(APP_PRIVATE_KEY);
     tx.sign(keypair);
 
-    // 5. Submit giao dịch lên blockchain
     const submitResult = await stellarServer.submitTransaction(tx);
 
-    // 6. Gọi endpoint /complete để xác nhận với Pi backend
     const completeRes = await axiosClient.post(`/v2/payments/${identifier}/complete`, {
       txid: submitResult.id
     });
