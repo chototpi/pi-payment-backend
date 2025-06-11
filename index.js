@@ -12,14 +12,7 @@ const PI_API_KEY = process.env.PI_API_KEY;
 const APP_PUBLIC_KEY = process.env.APP_PUBLIC_KEY;
 const APP_PRIVATE_KEY = process.env.APP_PRIVATE_KEY;
 
-const Server = StellarSdk.Server;
-const Keypair = StellarSdk.Keypair;
-const Asset = StellarSdk.Asset;
-const Operation = StellarSdk.Operation;
-const TransactionBuilder = StellarSdk.TransactionBuilder;
-const Memo = StellarSdk.Memo;
-
-const stellarServer = new Server('https://api.testnet.minepi.com');
+const stellarServer = new StellarSdk.Server('https://api.testnet.minepi.com');
 
 const axiosClient = axios.create({
   baseURL: 'https://api.minepi.com',
@@ -46,20 +39,20 @@ app.post('/api/a2u-test', async (req, res) => {
     const baseFee = await stellarServer.fetchBaseFee();
     const timebounds = await stellarServer.fetchTimebounds(180);
 
-    const tx = new TransactionBuilder(appAccount, {
+    const tx = new StellarSdk.TransactionBuilder(appAccount, {
       fee: baseFee.toString(),
       networkPassphrase: 'Pi Testnet',
       timebounds
     })
-      .addOperation(Operation.payment({
+      .addOperation(StellarSdk.Operation.payment({
         destination: recipient,
-        asset: Asset.native(),
+        asset: StellarSdk.Asset.native(),
         amount: amount.toString()
       }))
-      .addMemo(Memo.text(identifier))
+      .addMemo(StellarSdk.Memo.text(identifier))
       .build();
 
-    const keypair = Keypair.fromSecret(APP_PRIVATE_KEY);
+    const keypair = StellarSdk.Keypair.fromSecret(APP_PRIVATE_KEY);
     tx.sign(keypair);
 
     const submitResult = await stellarServer.submitTransaction(tx);
@@ -83,5 +76,5 @@ app.post('/api/a2u-test', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`A2U backend đang chạy tại http://localhost:${PORT}`);
+  console.log(`✅ A2U backend đang chạy tại http://localhost:${PORT}`);
 });
