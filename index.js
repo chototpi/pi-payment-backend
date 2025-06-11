@@ -1,9 +1,7 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import axios from 'axios';
-import pkg from '@stellar/stellar-sdk';
-
-const { Server, Keypair, Asset, Operation, TransactionBuilder, Memo } = pkg;
+import StellarSdk from '@stellar/stellar-sdk';
 
 dotenv.config();
 const app = express();
@@ -13,7 +11,7 @@ const PI_API_KEY = process.env.PI_API_KEY;
 const APP_PUBLIC_KEY = process.env.APP_PUBLIC_KEY;
 const APP_PRIVATE_KEY = process.env.APP_PRIVATE_KEY;
 
-const stellarServer = new Server('https://api.testnet.minepi.com');
+const stellarServer = new StellarSdk.Server('https://api.testnet.minepi.com');
 
 const axiosClient = axios.create({
   baseURL: 'https://api.minepi.com',
@@ -40,20 +38,20 @@ app.post('/api/a2u-test', async (req, res) => {
     const baseFee = await stellarServer.fetchBaseFee();
     const timebounds = await stellarServer.fetchTimebounds(180);
 
-    const tx = new TransactionBuilder(appAccount, {
+    const tx = new StellarSdk.TransactionBuilder(appAccount, {
       fee: baseFee.toString(),
       networkPassphrase: 'Pi Testnet',
       timebounds
     })
-      .addOperation(Operation.payment({
+      .addOperation(StellarSdk.Operation.payment({
         destination: recipient,
-        asset: Asset.native(),
+        asset: StellarSdk.Asset.native(),
         amount: amount.toString()
       }))
-      .addMemo(Memo.text(identifier))
+      .addMemo(StellarSdk.Memo.text(identifier))
       .build();
 
-    const keypair = Keypair.fromSecret(APP_PRIVATE_KEY);
+    const keypair = StellarSdk.Keypair.fromSecret(APP_PRIVATE_KEY);
     tx.sign(keypair);
 
     const submitResult = await stellarServer.submitTransaction(tx);
