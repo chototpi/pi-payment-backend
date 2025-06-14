@@ -16,7 +16,7 @@ const myPublicKey = process.env.APP_PUBLIC_KEY;
 const mySecretSeed = process.env.APP_PRIVATE_KEY;
 
 const axiosClient = axios.create({
-  baseURL: 'https://api.minepi.com',
+  baseURL: 'https://api.testnet.minepi.com',
   timeout: 20000,
   headers: {
     'Authorization': `Key ${PI_API_KEY}`,
