@@ -7,12 +7,10 @@ const app = express();
 app.use(express.json());
 app.use(cors({ origin: 'https://chototpi.site' }));
 
-// ⚙️ Config từ biến môi trường Render
 const PI_API_KEY = process.env.PI_API_KEY;
 const APP_PUBLIC_KEY = process.env.APP_PUBLIC_KEY;
 const APP_PRIVATE_KEY = process.env.APP_PRIVATE_KEY;
 
-// Axios client cho Pi API
 const axiosClient = axios.create({
   baseURL: 'https://api.testnet.minepi.com',
   timeout: 10000,
@@ -22,7 +20,6 @@ const axiosClient = axios.create({
   }
 });
 
-// A2U test route
 app.post('/api/a2u-test', async (req, res) => {
   const { uid, amount, memo } = req.body;
 
@@ -31,31 +28,40 @@ app.post('/api/a2u-test', async (req, res) => {
   }
 
   try {
-    // 1. Gọi Pi API để tạo payment A2U
-    const paymentBody = { uid, amount, memo, metadata: { test: true } };
+    const paymentBody = { uid, amount, memo, metadata: { app: "chototpi" } };
     const paymentRes = await axiosClient.post('/v2/payments', paymentBody);
     const paymentIdentifier = paymentRes.data.identifier;
     const recipientAddress = paymentRes.data.recipient;
+
+    console.log("🔍 Gửi đến:", recipientAddress);
+    console.log("🔍 Số Pi:", amount);
 
     const server = new StellarSdk.Server('https://api.testnet.minepi.com');
     const sourceAccount = await server.loadAccount(APP_PUBLIC_KEY);
     const baseFee = await server.fetchBaseFee();
     const timebounds = await server.fetchTimebounds(180);
 
-    // 2. Kiểm tra người nhận đã có tài khoản chưa
     let recipientExists = false;
     try {
       await server.loadAccount(recipientAddress);
       recipientExists = true;
     } catch (err) {
       if (err.response?.status === 404) {
-        console.log('⚠️ Recipient chưa tồn tại');
+        console.log("⚠️ Tài khoản người nhận chưa tồn tại.");
       } else {
         throw err;
       }
     }
 
-    // 3. Tạo operation
+    console.log("🔍 Có tài khoản trước đó không:", recipientExists);
+
+    if (!recipientExists && parseFloat(amount) < 1.0) {
+      return res.status(400).json({
+        success: false,
+        message: "Cần gửi ít nhất 1 Pi để tạo ví mới cho người dùng."
+      });
+    }
+
     const operation = recipientExists
       ? StellarSdk.Operation.payment({
           destination: recipientAddress,
@@ -67,7 +73,6 @@ app.post('/api/a2u-test', async (req, res) => {
           startingBalance: amount.toString()
         });
 
-    // 4. Build & ký giao dịch
     const tx = new StellarSdk.TransactionBuilder(sourceAccount, {
       fee: baseFee.toString(),
       networkPassphrase: 'Pi Testnet',
@@ -80,25 +85,23 @@ app.post('/api/a2u-test', async (req, res) => {
     const appKeypair = StellarSdk.Keypair.fromSecret(APP_PRIVATE_KEY);
     tx.sign(appKeypair);
 
-    // 5. Gửi giao dịch lên blockchain
     const txResult = await server.submitTransaction(tx);
     const txid = txResult.id;
 
-    // 6. Gọi complete
     await axiosClient.post(`/v2/payments/${paymentIdentifier}/complete`, { txid });
 
     return res.json({ success: true, txid, identifier: paymentIdentifier });
 
   } catch (err) {
-    console.error('❌ A2U dynamic error:', err.response?.data || err.message);
-    res.status(500).json({
+    console.error("❌ A2U dynamic error:", err.response?.data || err.message);
+    return res.status(500).json({
       success: false,
-      message: 'Lỗi khi xử lý A2U',
+      message: "Lỗi khi xử lý A2U",
       error: err.response?.data || err.message
     });
   }
 });
 
 app.listen(3000, () => {
-  console.log('✅ A2U backend đang chạy tại cổng 3000');
+  console.log("✅ Backend A2U đang chạy tại cổng 3000");
 });
