@@ -1,52 +1,67 @@
-  const axios = require('axios');
+import axios from 'axios';
+import dotenv from 'dotenv';
+import express from 'express';
+import StellarSdk from '@stellar/stellar-sdk';
 
-  // API Key of your app, available in the Pi Developer Portal
-  // DO NOT hardcode this, read it from an environment variable and treat it like a production secret.
-  const PI_API_KEY = "PI_API_KEY"
+dotenv.config();
+const app = express();
 
-  const axiosClient = axios.create({baseURL: 'https://api.minepi.com', timeout: 20000});
-  const config = {headers: {'Authorization': `Key ${PI_API_KEY}`, 'Content-Type': 'application/json'}};
-  
-  // This is the user UID of this payment's recipient
-  const userUid = "a1111111-aaaa-bbbb-2222-ccccccc3333d" // this is just an example uid!
-  const body =  {amount: 1, memo: "Memo for user", metadata: {test: "your metadata"}, uid: userUid}; // your payment data and uid
-  
-  let paymentIdentifier;
-  let recipientAddress;
+const PI_API_KEY = process.env.PI_API_KEY;
+const myPublicKey = process.env.APP_PUBLIC_KEY;
+const mySecretSeed = process.env.APP_PRIVATE_KEY;
 
-  axiosClient.post(`/v2/payments`, body, config).then(response => {
+const axiosClient = axios.create({
+  baseURL: 'https://api.minepi.com',
+  timeout: 20000,
+  headers: {
+    'Authorization': `Key ${PI_API_KEY}`,
+    'Content-Type': 'application/json'
+  }
+});
+
+// Gửi yêu cầu tạo thanh toán
+const userUid = "a1111111-aaaa-bbbb-2222-ccccccc3333d";
+const body = { amount: 1, memo: "Memo", metadata: { test: "your metadata" }, uid: userUid };
+
+let paymentIdentifier, recipientAddress;
+
+axiosClient.post(`/v2/payments`, body)
+  .then(async (response) => {
     paymentIdentifier = response.data.identifier;
     recipientAddress = response.data.recipient;
+
+    const server = new StellarSdk.Server('https://api.testnet.minepi.com');
+    const sourceAccount = await server.loadAccount(myPublicKey);
+    const baseFee = await server.fetchBaseFee();
+    const timebounds = await server.fetchTimebounds(180);
+
+    const transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
+      fee: baseFee.toString(),
+      networkPassphrase: 'Pi Testnet',
+      timebounds
+    })
+      .addOperation(StellarSdk.Operation.payment({
+        destination: recipientAddress,
+        asset: StellarSdk.Asset.native(),
+        amount: body.amount.toString()
+      }))
+      .addMemo(StellarSdk.Memo.text(paymentIdentifier))
+      .build();
+
+    const keypair = StellarSdk.Keypair.fromSecret(mySecretSeed);
+    transaction.sign(keypair);
+
+    const submitResult = await server.submitTransaction(transaction);
+    const txid = submitResult.id;
+
+    await axiosClient.post(`/v2/payments/${paymentIdentifier}/complete`, { txid });
+    console.log('✅ Giao dịch hoàn tất:', txid);
+  })
+  .catch((err) => {
+    console.error('❌ Lỗi khi gửi thanh toán A2U:', err.response?.data || err.message);
   });
-
-const StellarSdk = require('stellar-sdk');
-
-const myPublicKey = "G_YOUR_PUBLIC_KEY" // your public key, starts with G
-
-// an object that let you communicate with the Pi Testnet
-// if you want to connect to Pi Mainnet, use 'https://api.mainnet.minepi.com' instead
-const piTestnet = new StellarSdk.Server('https://api.testnet.minepi.com');
-
-let myAccount;
-piTestnet.loadAccount(myPublicKey).then(response => myAccount = response);
-
-let baseFee;
-piTestnet.fetchBaseFee().then(response => baseFee = response);
-
-// See the "Obtain your wallet's private key" section above to get this.
-// And DON'T HARDCODE IT, treat it like a production secret.
-const mySecretSeed = "APP_PRIVATE_KEY"; // NEVER expose your secret seed to public, starts with S
-const myKeypair = StellarSdk.Keypair.fromSecret(mySecretSeed);
-transaction.sign(myKeypair);
-
-let txid;
-piTestnet.submitTransaction(transaction).then(response => txid = response.id);
-
-// check if the response status is 200 
-let completeResponse;
-axiosClient.post(`/v2/payments/${paymentIdentifier}/complete`, {txid}, config).then(response => completeResponse = response);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`✅ A2U backend (SDK 12.x ESM) đang chạy tại http://localhost:${PORT}`);
+  console.log(`✅ A2U backend chạy tại http://localhost:${PORT}`);
 });
