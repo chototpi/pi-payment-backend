@@ -1,7 +1,9 @@
-const express = require('express');
-const dotenv = require('dotenv');
-const axios = require('axios');
-const { Server, Keypair, Asset, Operation, TransactionBuilder, Memo } = require('@stellar/stellar-sdk');
+import express from 'express';
+import dotenv from 'dotenv';
+import axios from 'axios';
+import pkg from '@stellar/stellar-sdk';
+
+const { Server, Keypair, Asset, Operation, TransactionBuilder, Memo } = pkg;
 
 dotenv.config();
 const app = express();
@@ -75,5 +77,5 @@ app.post('/api/a2u-test', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`✅ A2U backend (v8.2.3) chạy tại http://localhost:${PORT}`);
+  console.log(`✅ A2U backend (SDK 12.x ESM) đang chạy tại http://localhost:${PORT}`);
 });
