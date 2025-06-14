@@ -4,13 +4,12 @@ import express from 'express';
 import StellarSdk from '@stellar/stellar-sdk';
 import cors from 'cors';
 
-app.use(cors({
-  origin: 'https://chototpi.site'
-}));
-
 dotenv.config();
 const app = express();
 app.use(express.json());
+app.use(cors({
+  origin: 'https://chototpi.site'
+}));
 
 const PI_API_KEY = process.env.PI_API_KEY;
 const myPublicKey = process.env.APP_PUBLIC_KEY;
