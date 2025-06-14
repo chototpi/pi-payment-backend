@@ -1,10 +1,8 @@
 import axios from 'axios';
 import dotenv from 'dotenv';
 import express from 'express';
-import pkg from '@stellar/stellar-sdk';
+import StellarSdk from '@stellar/stellar-sdk';
 import cors from 'cors';
-
-const { Server, Keypair, Asset, Operation, TransactionBuilder, Memo } = pkg;
 
 dotenv.config();
 const app = express();
@@ -14,6 +12,8 @@ app.use(cors({
 }));
 
 const PI_API_KEY = process.env.PI_API_KEY;
+const myPublicKey = process.env.APP_PUBLIC_KEY;
+const mySecretSeed = process.env.APP_PRIVATE_KEY;
 
 const axiosClient = axios.create({
   baseURL: 'https://api.testnet.minepi.com',
@@ -88,18 +88,19 @@ app.post("/api/a2u-test", async (req, res) => {
   }
 });
 
-//Load the account
-const myPublicKey = "APP_PUBLIC_KEY" // your public key, starts with G
+//Load acount
+const server = new StellarSdk.Server('https://api.testnet.minepi.com');
 
-// an object that let you communicate with the Pi Testnet
-// if you want to connect to Pi Mainnet, use 'https://api.mainnet.minepi.com' instead
-const piTestnet = new Server('https://api.testnet.minepi.com');
-
-let myAccount;
-piTestnet.loadAccount(myPublicKey).then(response => myAccount = response);
-
-let baseFee;
-piTestnet.fetchBaseFee().then(response => baseFee = response);
+const loadAppAccount = async () => {
+  try {
+    const account = await server.loadAccount(myPublicKey);
+    const fee = await server.fetchBaseFee();
+    return { account, fee };
+  } catch (err) {
+    console.error("❌ Lỗi khi load app account:", err);
+    throw err;
+  }
+};
 
 //Build the transaction
 // create a payment operation which will be wrapped in a transaction
@@ -126,7 +127,6 @@ transaction = transaction.build();
 //Sign the transaction
 // See the "Obtain your wallet's private key" section above to get this.
 // And DON'T HARDCODE IT, treat it like a production secret.
-const mySecretSeed = "APP_PRIVATE_KEY"; // NEVER expose your secret seed to public, starts with S
 const myKeypair = StellarSdk.Keypair.fromSecret(mySecretSeed);
 transaction.sign(myKeypair);
 
