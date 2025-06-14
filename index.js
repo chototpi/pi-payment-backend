@@ -2,6 +2,11 @@ import axios from 'axios';
 import dotenv from 'dotenv';
 import express from 'express';
 import StellarSdk from '@stellar/stellar-sdk';
+import cors from 'cors';
+
+app.use(cors({
+  origin: 'https://chototpi.site'
+}));
 
 dotenv.config();
 const app = express();
