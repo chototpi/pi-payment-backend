@@ -28,13 +28,13 @@ app.post('/api/a2u-test', async (req, res) => {
   }
 
   try {
-    const paymentBody = { uid, amount, memo, metadata: { app: "chototpi" } };
+    const paymentBody = { uid, amount, memo, metadata: { debug: true } };
     const paymentRes = await axiosClient.post('/v2/payments', paymentBody);
     const paymentIdentifier = paymentRes.data.identifier;
     const recipientAddress = paymentRes.data.recipient;
 
-    console.log("🔍 Gửi đến:", recipientAddress);
-    console.log("🔍 Số Pi:", amount);
+    console.log("🔍 [A2U] Gửi đến:", recipientAddress);
+    console.log("🔍 [A2U] Số Pi:", amount);
 
     const server = new StellarSdk.Server('https://api.testnet.minepi.com');
     const sourceAccount = await server.loadAccount(APP_PUBLIC_KEY);
@@ -47,18 +47,19 @@ app.post('/api/a2u-test', async (req, res) => {
       recipientExists = true;
     } catch (err) {
       if (err.response?.status === 404) {
-        console.log("⚠️ Tài khoản người nhận chưa tồn tại.");
+        console.log("⚠️ [A2U] Tài khoản người nhận chưa tồn tại.");
       } else {
+        console.log("❌ [A2U] Lỗi kiểm tra tài khoản người nhận:", err.message);
         throw err;
       }
     }
 
-    console.log("🔍 Có tài khoản trước đó không:", recipientExists);
+    console.log("🔍 [A2U] Tài khoản đã tồn tại:", recipientExists);
 
     if (!recipientExists && parseFloat(amount) < 1.0) {
       return res.status(400).json({
         success: false,
-        message: "Cần gửi ít nhất 1 Pi để tạo ví mới cho người dùng."
+        message: "Phải gửi ít nhất 1 Pi để tạo ví mới (createAccount)."
       });
     }
 
@@ -85,15 +86,19 @@ app.post('/api/a2u-test', async (req, res) => {
     const appKeypair = StellarSdk.Keypair.fromSecret(APP_PRIVATE_KEY);
     tx.sign(appKeypair);
 
+    console.log("📤 [A2U] Transaction XDR:", tx.toXDR());
+
     const txResult = await server.submitTransaction(tx);
     const txid = txResult.id;
+
+    console.log("✅ [A2U] Giao dịch thành công:", txid);
 
     await axiosClient.post(`/v2/payments/${paymentIdentifier}/complete`, { txid });
 
     return res.json({ success: true, txid, identifier: paymentIdentifier });
 
   } catch (err) {
-    console.error("❌ A2U dynamic error:", err.response?.data || err.message);
+    console.error("❌ [A2U] Lỗi xử lý:", err.response?.data || err.message);
     return res.status(500).json({
       success: false,
       message: "Lỗi khi xử lý A2U",
