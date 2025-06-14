@@ -127,7 +127,8 @@ transaction = transaction.build();
 const mySecretSeed = "APP_PRIVATE_KEY"; // NEVER expose your secret seed to public, starts with S
 const myKeypair = StellarSdk.Keypair.fromSecret(mySecretSeed);
 transaction.sign(myKeypair);
-Submit the transaction to the Pi blockchain
+
+//Submit the transaction to the Pi blockchain
 let txid;
 piTestnet.submitTransaction(transaction).then(response => txid = response.id);
 
