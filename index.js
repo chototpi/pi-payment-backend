@@ -1,13 +1,13 @@
-import express from 'express';
-import dotenv from 'dotenv';
-import axios from 'axios';
-import pkg from '@stellar/stellar-sdk';
+const express = require('express');
+const dotenv = require('dotenv');
+const axios = require('axios');
+const StellarSdk = require('@stellar/stellar-sdk');
 
 dotenv.config();
 const app = express();
 app.use(express.json());
 
-const { Server, Keypair, Asset, Operation, TransactionBuilder, Memo } = pkg;
+const { Server, Keypair, Asset, Operation, TransactionBuilder, Memo } = StellarSdk;
 
 const PI_API_KEY = process.env.PI_API_KEY;
 const APP_PUBLIC_KEY = process.env.APP_PUBLIC_KEY;
@@ -26,7 +26,6 @@ const axiosClient = axios.create({
 
 app.post('/api/a2u-test', async (req, res) => {
   const { uid, amount, memo } = req.body;
-
   if (!uid || !amount || !memo) {
     return res.status(400).json({ success: false, message: "Thiếu thông tin bắt buộc." });
   }
@@ -58,24 +57,16 @@ app.post('/api/a2u-test', async (req, res) => {
 
     const submitResult = await stellarServer.submitTransaction(tx);
 
-    const completeRes = await axiosClient.post(`/v2/payments/${identifier}/complete`, {
-      txid: submitResult.id
-    });
+    await axiosClient.post(`/v2/payments/${identifier}/complete`, { txid: submitResult.id });
 
-    return res.json({
-      success: true,
-      txid: submitResult.id,
-      paymentId: identifier,
-      complete: completeRes.status === 200
-    });
-
-  } catch (error) {
-    console.error("Lỗi A2U:", error?.response?.data || error.message);
-    return res.status(500).json({ success: false, message: "Lỗi khi xử lý A2U", error: error?.message });
+    res.json({ success: true, txid: submitResult.id });
+  } catch (err) {
+    console.error("❌ A2U Error:", err?.response?.data || err.message);
+    res.status(500).json({ success: false, message: "Lỗi xử lý A2U", error: err.message });
   }
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`✅ A2U backend đang chạy tại http://localhost:${PORT}`);
+  console.log(`✅ A2U server running on port ${PORT}`);
 });
