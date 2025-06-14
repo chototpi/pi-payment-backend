@@ -89,8 +89,6 @@ app.post("/api/a2u-test", async (req, res) => {
 });
 
 //Load acount
-const server = new StellarSdk.Server('https://api.testnet.minepi.com');
-
 const loadAppAccount = async () => {
   try {
     const account = await server.loadAccount(myPublicKey);
