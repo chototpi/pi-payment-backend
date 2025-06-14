@@ -1,28 +1,68 @@
-import express from "express";
-import dotenv from "dotenv";
-import axios from "axios";
-import StellarSdk from "@stellar/stellar-sdk";
+import axios from 'axios';
+import dotenv from 'dotenv';
+import express from 'express';
+import StellarSdk from '@stellar/stellar-sdk';
 
+dotenv.config();
 const app = express();
 app.use(express.json());
-dotenv.config();
 
 const PI_API_KEY = process.env.PI_API_KEY;
-const APP_PUBLIC_KEY = process.env.APP_PUBLIC_KEY;
-const APP_PRIVATE_KEY = process.env.APP_PRIVATE_KEY;
+const myPublicKey = process.env.APP_PUBLIC_KEY;
+const mySecretSeed = process.env.APP_PRIVATE_KEY;
 
 const axiosClient = axios.create({
-  baseURL: "https://api.minepi.com",
+  baseURL: 'https://api.minepi.com',
   timeout: 20000,
   headers: {
-    Authorization: `Key ${PI_API_KEY}`,
-    "Content-Type": "application/json"
+    'Authorization': `Key ${PI_API_KEY}`,
+    'Content-Type': 'application/json'
   }
 });
 
-const stellarServer = new StellarSdk.Server("https://api.testnet.minepi.com");
+// Gửi yêu cầu tạo thanh toán mặc định khi khởi động
+const userUid = "a1111111-aaaa-bbbb-2222-ccccccc3333d";
+const body = { amount: 1, memo: "Memo", metadata: { test: "your metadata" }, uid: userUid };
 
-// ✅ Thêm router /api/a2u-test
+let paymentIdentifier, recipientAddress;
+
+axiosClient.post(`/v2/payments`, body)
+  .then(async (response) => {
+    paymentIdentifier = response.data.identifier;
+    recipientAddress = response.data.recipient;
+
+    const server = new StellarSdk.Server('https://api.testnet.minepi.com');
+    const sourceAccount = await server.loadAccount(myPublicKey);
+    const baseFee = await server.fetchBaseFee();
+    const timebounds = await server.fetchTimebounds(180);
+
+    const transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
+      fee: baseFee.toString(),
+      networkPassphrase: 'Pi Testnet',
+      timebounds
+    })
+      .addOperation(StellarSdk.Operation.payment({
+        destination: recipientAddress,
+        asset: StellarSdk.Asset.native(),
+        amount: body.amount.toString()
+      }))
+      .addMemo(StellarSdk.Memo.text(paymentIdentifier))
+      .build();
+
+    const keypair = StellarSdk.Keypair.fromSecret(mySecretSeed);
+    transaction.sign(keypair);
+
+    const submitResult = await server.submitTransaction(transaction);
+    const txid = submitResult.id;
+
+    await axiosClient.post(`/v2/payments/${paymentIdentifier}/complete`, { txid });
+    console.log('✅ Giao dịch hoàn tất:', txid);
+  })
+  .catch((err) => {
+    console.error('❌ Lỗi khi gửi thanh toán A2U:', err.response?.data || err.message);
+  });
+
+// ✅ BỔ SUNG ROUTER: cho phép frontend gửi A2U động
 app.post("/api/a2u-test", async (req, res) => {
   const { uid, amount, memo } = req.body;
 
@@ -31,17 +71,17 @@ app.post("/api/a2u-test", async (req, res) => {
   }
 
   try {
-    const body = { amount, memo, metadata: { test: true }, uid };
-    const paymentRes = await axiosClient.post("/v2/payments", body);
+    const paymentBody = { amount, memo, metadata: { test: true }, uid };
+    const paymentRes = await axiosClient.post("/v2/payments", paymentBody);
     const { identifier, recipient } = paymentRes.data;
 
-    const appAccount = await stellarServer.loadAccount(APP_PUBLIC_KEY);
-    const baseFee = await stellarServer.fetchBaseFee();
-    const timebounds = await stellarServer.fetchTimebounds(180);
+    const server = new StellarSdk.Server('https://api.testnet.minepi.com');
+    const sourceAccount = await server.loadAccount(myPublicKey);
+    const baseFee = await server.fetchBaseFee();
+    const timebounds = await server.fetchTimebounds(180);
 
-    const tx = new StellarSdk.TransactionBuilder(appAccount, {
-      fee: baseFee.toString(),
-      networkPassphrase: "Pi Testnet",
+    const transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
+      fee: baseFee.toString(),networkPassphrase: 'Pi Testnet',
       timebounds
     })
       .addOperation(StellarSdk.Operation.payment({
@@ -52,19 +92,19 @@ app.post("/api/a2u-test", async (req, res) => {
       .addMemo(StellarSdk.Memo.text(identifier))
       .build();
 
-    const keypair = StellarSdk.Keypair.fromSecret(APP_PRIVATE_KEY);
-    tx.sign(keypair);
+    const keypair = StellarSdk.Keypair.fromSecret(mySecretSeed);
+    transaction.sign(keypair);
 
-    const submitResult = await stellarServer.submitTransaction(tx);
+    const submitResult = await server.submitTransaction(transaction);
     const txid = submitResult.id;
 
     await axiosClient.post(`/v2/payments/${identifier}/complete`, { txid });
 
-    return res.json({ success: true, txid, identifier });
+    res.json({ success: true, txid, identifier });
 
-  } catch (error) {
-    console.error("❌ Lỗi A2U:", error?.response?.data || error.message);
-    return res.status(500).json({ success: false, message: "Lỗi khi xử lý A2U", error: error?.message });
+  } catch (err) {
+    console.error("❌ A2U dynamic error:", err.response?.data || err.message);
+    res.status(500).json({ success: false, message: "Lỗi khi xử lý A2U", error: err.message });
   }
 });
 
