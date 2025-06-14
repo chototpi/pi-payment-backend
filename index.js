@@ -84,15 +84,33 @@ app.post("/api/a2u-test", async (req, res) => {
     const baseFee = await server.fetchBaseFee();
     const timebounds = await server.fetchTimebounds(180);
 
-    const transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
-      fee: baseFee.toString(),networkPassphrase: 'Pi Testnet',
-      timebounds
-    })
-      .addOperation(StellarSdk.Operation.payment({
+    let operation;
+
+    const recipientExists = await server
+      .loadAccount(recipient)
+      .then(() => true)
+      .catch(() => false);
+
+    if (!recipientExists) {
+      console.log("📌 Recipient chưa tồn tại. Sẽ tạo tài khoản mới.");
+      operation = StellarSdk.Operation.createAccount({
+        destination: recipient,
+        startingBalance: amount.toString()
+      });
+    } else {
+      operation = StellarSdk.Operation.payment({
         destination: recipient,
         asset: StellarSdk.Asset.native(),
         amount: amount.toString()
-      }))
+      });
+    }
+
+    const transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
+      fee: baseFee.toString(),
+      networkPassphrase: "Pi Testnet",
+      timebounds
+    })
+      .addOperation(operation)
       .addMemo(StellarSdk.Memo.text(identifier))
       .build();
 
