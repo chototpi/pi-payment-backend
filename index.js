@@ -93,7 +93,7 @@ const myPublicKey = "APP_PUBLIC_KEY" // your public key, starts with G
 
 // an object that let you communicate with the Pi Testnet
 // if you want to connect to Pi Mainnet, use 'https://api.mainnet.minepi.com' instead
-const piTestnet = new StellarSdk.Server('https://api.testnet.minepi.com');
+const piTestnet = new Server('https://api.testnet.minepi.com');
 
 let myAccount;
 piTestnet.loadAccount(myPublicKey).then(response => myAccount = response);
