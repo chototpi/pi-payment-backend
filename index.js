@@ -1,8 +1,10 @@
 import axios from 'axios';
 import dotenv from 'dotenv';
 import express from 'express';
-import StellarSdk from '@stellar/stellar-sdk';
+import pkg from '@stellar/stellar-sdk';
 import cors from 'cors';
+
+const { Server, Keypair, Asset, Operation, TransactionBuilder, Memo } = pkg;
 
 dotenv.config();
 const app = express();
