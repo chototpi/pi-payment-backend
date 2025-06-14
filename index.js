@@ -1,7 +1,7 @@
 import express from "express";
 import dotenv from "dotenv";
 import axios from "axios";
-import StellarSdk from "stellar-sdk";
+import StellarSdk from "@stellar/stellar-sdk";
 
 const app = express();
 app.use(express.json());
