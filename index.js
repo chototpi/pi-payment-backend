@@ -1,143 +1,104 @@
-import axios from 'axios';
-import dotenv from 'dotenv';
 import express from 'express';
-import StellarSdk from '@stellar/stellar-sdk';
 import cors from 'cors';
+import axios from 'axios';
+import StellarSdk from '@stellar/stellar-sdk';
 
-dotenv.config();
 const app = express();
 app.use(express.json());
-app.use(cors({
-  origin: 'https://chototpi.site'
-}));
+app.use(cors({ origin: 'https://chototpi.site' }));
 
+// ⚙️ Config từ biến môi trường Render
 const PI_API_KEY = process.env.PI_API_KEY;
-const myPublicKey = process.env.APP_PUBLIC_KEY;
-const mySecretSeed = process.env.APP_PRIVATE_KEY;
+const APP_PUBLIC_KEY = process.env.APP_PUBLIC_KEY;
+const APP_PRIVATE_KEY = process.env.APP_PRIVATE_KEY;
 
+// Axios client cho Pi API
 const axiosClient = axios.create({
   baseURL: 'https://api.testnet.minepi.com',
-  timeout: 20000,
+  timeout: 10000,
   headers: {
-    'Authorization': `Key ${PI_API_KEY}`,
+    Authorization: `Key ${PI_API_KEY}`,
     'Content-Type': 'application/json'
   }
 });
 
-// ✅ BỔ SUNG ROUTER: cho phép frontend gửi A2U động
-app.post("/api/a2u-test", async (req, res) => {
+// A2U test route
+app.post('/api/a2u-test', async (req, res) => {
   const { uid, amount, memo } = req.body;
 
   if (!uid || !amount || !memo) {
-    return res.status(400).json({ success: false, message: "Thiếu uid, amount hoặc memo" });
+    return res.status(400).json({ success: false, message: 'Thiếu uid, amount hoặc memo' });
   }
 
   try {
-    const paymentBody = { amount, memo, metadata: { test: true }, uid };
-    const paymentRes = await axiosClient.post("/v2/payments", paymentBody);
-    const { identifier, recipient } = paymentRes.data;
+    // 1. Gọi Pi API để tạo payment A2U
+    const paymentBody = { uid, amount, memo, metadata: { test: true } };
+    const paymentRes = await axiosClient.post('/v2/payments', paymentBody);
+    const paymentIdentifier = paymentRes.data.identifier;
+    const recipientAddress = paymentRes.data.recipient;
 
     const server = new StellarSdk.Server('https://api.testnet.minepi.com');
-    const sourceAccount = await server.loadAccount(myPublicKey);
+    const sourceAccount = await server.loadAccount(APP_PUBLIC_KEY);
     const baseFee = await server.fetchBaseFee();
     const timebounds = await server.fetchTimebounds(180);
 
-    let operation;
-
-    const recipientExists = await server
-      .loadAccount(recipient)
-      .then(() => true)
-      .catch(() => false);
-
-    if (!recipientExists) {
-      console.log("📌 Recipient chưa tồn tại. Sẽ tạo tài khoản mới.");
-      operation = StellarSdk.Operation.createAccount({
-        destination: recipient,
-        startingBalance: amount.toString()
-      });
-    } else {
-      operation = StellarSdk.Operation.payment({
-        destination: recipient,
-        asset: StellarSdk.Asset.native(),
-        amount: amount.toString()
-      });
+    // 2. Kiểm tra người nhận đã có tài khoản chưa
+    let recipientExists = false;
+    try {
+      await server.loadAccount(recipientAddress);
+      recipientExists = true;
+    } catch (err) {
+      if (err.response?.status === 404) {
+        console.log('⚠️ Recipient chưa tồn tại');
+      } else {
+        throw err;
+      }
     }
 
-    const transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
+    // 3. Tạo operation
+    const operation = recipientExists
+      ? StellarSdk.Operation.payment({
+          destination: recipientAddress,
+          asset: StellarSdk.Asset.native(),
+          amount: amount.toString()
+        })
+      : StellarSdk.Operation.createAccount({
+          destination: recipientAddress,
+          startingBalance: amount.toString()
+        });
+
+    // 4. Build & ký giao dịch
+    const tx = new StellarSdk.TransactionBuilder(sourceAccount, {
       fee: baseFee.toString(),
-      networkPassphrase: "Pi Testnet",
+      networkPassphrase: 'Pi Testnet',
       timebounds
     })
       .addOperation(operation)
-      .addMemo(StellarSdk.Memo.text(identifier))
+      .addMemo(StellarSdk.Memo.text(paymentIdentifier))
       .build();
 
-    const keypair = StellarSdk.Keypair.fromSecret(mySecretSeed);
-    transaction.sign(keypair);
+    const appKeypair = StellarSdk.Keypair.fromSecret(APP_PRIVATE_KEY);
+    tx.sign(appKeypair);
 
-    const submitResult = await server.submitTransaction(transaction);
-    const txid = submitResult.id;
+    // 5. Gửi giao dịch lên blockchain
+    const txResult = await server.submitTransaction(tx);
+    const txid = txResult.id;
 
-    await axiosClient.post(`/v2/payments/${identifier}/complete`, { txid });
+    // 6. Gọi complete
+    await axiosClient.post(`/v2/payments/${paymentIdentifier}/complete`, { txid });
 
-    res.json({ success: true, txid, identifier });
+    return res.json({ success: true, txid, identifier: paymentIdentifier });
 
   } catch (err) {
-    console.error("❌ A2U dynamic error:", err.response?.data || err.message);
-    res.status(500).json({ success: false, message: "Lỗi khi xử lý A2U", error: err.message });
+    console.error('❌ A2U dynamic error:', err.response?.data || err.message);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi xử lý A2U',
+      error: err.response?.data || err.message
+    });
   }
 });
 
-//Load acount
-const loadAppAccount = async () => {
-  try {
-    const account = await server.loadAccount(myPublicKey);
-    const fee = await server.fetchBaseFee();
-    return { account, fee };
-  } catch (err) {
-    console.error("❌ Lỗi khi load app account:", err);
-    throw err;
-  }
-};
-
-//Build the transaction
-// create a payment operation which will be wrapped in a transaction
-let payment = StellarSdk.Operation.payment({
-  destination: recipientAddress,
-  asset: StellarSdk.Asset.native(),
-  amount: body.amount.toString()
-});
-
-// 180 seconds timeout
-let timebounds;
-piTestnet.fetchTimebounds(180).then(response => timebounds = response);
-
-let transaction = new StellarSdk.TransactionBuilder(myAccount, {
-  fee: baseFee,
-  networkPassphrase: "Pi Testnet", // use "Pi Network" for mainnet transaction
-  timebounds: timebounds
-})
-.addOperation(payment)
-// IMPORTANT! DO NOT forget to include the payment id as memo
-.addMemo(StellarSdk.Memo.text(paymentIdentifier));
-transaction = transaction.build();
-
-//Sign the transaction
-// See the "Obtain your wallet's private key" section above to get this.
-// And DON'T HARDCODE IT, treat it like a production secret.
-const myKeypair = StellarSdk.Keypair.fromSecret(mySecretSeed);
-transaction.sign(myKeypair);
-
-//Submit the transaction to the Pi blockchain
-let txid;
-piTestnet.submitTransaction(transaction).then(response => txid = response.id);
-
-//Complete the payment by sending API request to /complete endpoint
-// check if the response status is 200 
-let completeResponse;
-axiosClient.post(`/v2/payments/${paymentIdentifier}/complete`, {txid}, config).then(response => completeResponse = response);
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`✅ A2U backend chạy tại http://localhost:${PORT}`);
+app.listen(3000, () => {
+  console.log('✅ A2U backend đang chạy tại cổng 3000');
 });
