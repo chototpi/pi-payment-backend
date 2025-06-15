@@ -98,6 +98,7 @@ app.post('/api/a2u-test', async (req, res) => {
       .build();
 
     const keypair = StellarSdk.Keypair.fromSecret(APP_PRIVATE_KEY);
+    console.log("🔐 PUBLIC KEY từ private key:", keypair.publicKey());
     console.log("✅ Derived public key từ APP_PRIVATE_KEY:", keypair.publicKey());
     tx.sign(keypair);
 
