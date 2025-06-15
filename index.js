@@ -12,7 +12,7 @@ const APP_PUBLIC_KEY = process.env.APP_PUBLIC_KEY;
 const APP_PRIVATE_KEY = process.env.APP_PRIVATE_KEY;
 
 const axiosClient = axios.create({
-  baseURL: 'https://api.testnet.minepi.com', // ✅ Sửa thành testnet
+  baseURL: 'https://api.testnet.minepi.com',
   timeout: 20000,
   headers: {
     Authorization: `Key ${PI_API_KEY}`,
@@ -34,26 +34,22 @@ app.post('/api/a2u-test', async (req, res) => {
   }
 
   try {
-    const body = {
-      amount,
-      memo,
-      metadata: { purpose: "A2U payment" },
-      uid
-    };
-
+    const body = { amount, memo, metadata: { purpose: "A2U payment" }, uid };
     console.log("📤 Đang gửi tới Pi API /v2/payments ...");
+
     const createRes = await axiosClient.post('/v2/payments', body);
     const paymentIdentifier = createRes.data.identifier;
     const recipientAddress = createRes.data.recipient;
 
     if (!paymentIdentifier) {
-    console.error("🚨 paymentIdentifier không tồn tại!");
-    return res.status(500).json({ success: false, message: "Không có paymentIdentifier!" });
+      console.error("🚨 paymentIdentifier không tồn tại!");
+      return res.status(500).json({ success: false, message: "Không có paymentIdentifier!" });
     }
-    
+
     if (!recipientAddress) {
-    return res.status(500).json({ success: false, message: "Không có recipientAddress!" });
+      return res.status(500).json({ success: false, message: "Không có recipientAddress!" });
     }
+
     console.log("✅ Payment ID:", paymentIdentifier);
     console.log("✅ Recipient Address:", recipientAddress);
 
@@ -69,6 +65,8 @@ app.post('/api/a2u-test', async (req, res) => {
     } catch (err) {
       if (err.response?.status !== 404) throw err;
     }
+
+    console.log("📦 Recipient exists:", recipientExists);
 
     if (!recipientExists && parseFloat(amount) < 1.0) {
       return res.status(400).json({
@@ -87,9 +85,9 @@ app.post('/api/a2u-test', async (req, res) => {
           destination: recipientAddress,
           startingBalance: amount.toString()
         });
-    
+
     console.log("🧾 Final memo:", paymentIdentifier.slice(0, 28));
-    
+
     const tx = new StellarSdk.TransactionBuilder(sourceAccount, {
       fee: baseFee.toString(),
       networkPassphrase: "Pi Testnet",
@@ -100,7 +98,7 @@ app.post('/api/a2u-test', async (req, res) => {
       .build();
 
     const keypair = StellarSdk.Keypair.fromSecret(APP_PRIVATE_KEY);
-    console.log("🔐 PUBLIC KEY từ private key:", keypair.publicKey());
+    console.log("🔐 Derived public key từ APP_PRIVATE_KEY:", keypair.publicKey());
     tx.sign(keypair);
 
     const txResult = await server.submitTransaction(tx);
