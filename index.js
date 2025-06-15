@@ -95,6 +95,7 @@ app.post('/api/a2u-test', async (req, res) => {
     })
       .addOperation(operation)
       .addMemo(StellarSdk.Memo.text(paymentIdentifier.slice(0, 28)))
+      console.log("🧾 Final memo:", paymentIdentifier.slice(0, 28));
       .build();
 
     const keypair = StellarSdk.Keypair.fromSecret(APP_PRIVATE_KEY);
