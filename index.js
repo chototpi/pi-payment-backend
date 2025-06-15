@@ -21,7 +21,8 @@ const axiosClient = axios.create({
 });
 
 app.post('/api/a2u-test', async (req, res) => {
-  const { uid, amount, memo } = req.body;
+  const { uid, amount } = req.body;
+  const memo = "A2U-test-001";  // 👈 Dùng memo cố định ở backend
 
   console.log("🔍 A2U REQUEST:");
   console.log("📌 UID:", uid);
@@ -29,8 +30,9 @@ app.post('/api/a2u-test', async (req, res) => {
   console.log("📌 MEMO:", memo);
   console.log("📌 PI_API_KEY starts with:", PI_API_KEY?.slice(0, 6));
 
-  if (!uid || !amount || !memo) {
-    return res.status(400).json({ success: false, message: 'Thiếu uid, amount hoặc memo' });
+  // ✅ Chỉ kiểm tra uid và amount, không cần kiểm tra memo nữa
+  if (!uid || !amount) {
+  return res.status(400).json({ success: false, message: 'Thiếu uid hoặc amount' });
   }
 
   try {
