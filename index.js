@@ -87,7 +87,9 @@ app.post('/api/a2u-test', async (req, res) => {
           destination: recipientAddress,
           startingBalance: amount.toString()
         });
-
+    
+    console.log("🧾 Final memo:", paymentIdentifier.slice(0, 28));
+    
     const tx = new StellarSdk.TransactionBuilder(sourceAccount, {
       fee: baseFee.toString(),
       networkPassphrase: "Pi Testnet",
@@ -95,12 +97,10 @@ app.post('/api/a2u-test', async (req, res) => {
     })
       .addOperation(operation)
       .addMemo(StellarSdk.Memo.text(paymentIdentifier.slice(0, 28)))
-      console.log("🧾 Final memo:", paymentIdentifier.slice(0, 28));
       .build();
 
     const keypair = StellarSdk.Keypair.fromSecret(APP_PRIVATE_KEY);
     console.log("🔐 PUBLIC KEY từ private key:", keypair.publicKey());
-    console.log("✅ Derived public key từ APP_PRIVATE_KEY:", keypair.publicKey());
     tx.sign(keypair);
 
     const txResult = await server.submitTransaction(tx);
