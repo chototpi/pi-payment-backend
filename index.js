@@ -1,7 +1,7 @@
-import express from 'express';
-import cors from 'cors';
-import axios from 'axios';
-import StellarSdk from 'stellar-sdk';
+const express = require('express');
+const cors = require('cors');
+const axios = require('axios');
+const StellarSdk = require('stellar-sdk');
 
 const app = express();
 app.use(express.json());
