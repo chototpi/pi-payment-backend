@@ -86,16 +86,13 @@ app.post('/api/a2u-test', async (req, res) => {
           startingBalance: amount.toString()
         });
 
-    console.log("🧾 Full paymentIdentifier:", paymentIdentifier);
-    console.log("🧾 Memo sử dụng:", paymentIdentifier.slice(0, 28));
-
     const tx = new StellarSdk.TransactionBuilder(sourceAccount, {
       fee: baseFee.toString(),
       networkPassphrase: "Pi Testnet",
       timebounds
     })
       .addOperation(operation)
-      .addMemo(StellarSdk.Memo.text("A2U-test-001"))
+      .addMemo(StellarSdk.Memo.text("A2U-test-001"))  // 👈 MEMO cố định để test
       .build();
 
     const keypair = StellarSdk.Keypair.fromSecret(APP_PRIVATE_KEY);
