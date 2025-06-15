@@ -35,9 +35,16 @@ app.post('/api/a2u-test', async (req, res) => {
 
   try {
     const body = { amount, memo, metadata: { purpose: "A2U payment" }, uid };
+    console.log("📦 BODY gửi tới Pi API:", body);
     console.log("📤 Đang gửi tới Pi API /v2/payments ...");
 
-    const createRes = await axiosClient.post('/v2/payments', body);
+    let createRes;
+    try {
+    createRes = await axiosClient.post('/v2/payments', body);
+    } catch (apiErr) {
+    console.error("❌ Lỗi khi gọi Pi API /v2/payments:", apiErr.response?.data || apiErr.message);
+    return res.status(500).json({ success: false, message: "Lỗi gọi Pi API", error: apiErr.response?.data || apiErr.message });
+    }
     const paymentIdentifier = createRes.data.identifier;
     const recipientAddress = createRes.data.recipient;
 
