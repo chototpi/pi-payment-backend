@@ -86,7 +86,8 @@ app.post('/api/a2u-test', async (req, res) => {
           startingBalance: amount.toString()
         });
 
-    console.log("🧾 Final memo:", paymentIdentifier.slice(0, 28));
+    console.log("🧾 Full paymentIdentifier:", paymentIdentifier);
+    console.log("🧾 Memo sử dụng:", paymentIdentifier.slice(0, 28));
 
     const tx = new StellarSdk.TransactionBuilder(sourceAccount, {
       fee: baseFee.toString(),
@@ -94,7 +95,7 @@ app.post('/api/a2u-test', async (req, res) => {
       timebounds
     })
       .addOperation(operation)
-      .addMemo(StellarSdk.Memo.text(paymentIdentifier.slice(0, 28)))
+      .addMemo(StellarSdk.Memo.text("A2U-test-001"))
       .build();
 
     const keypair = StellarSdk.Keypair.fromSecret(APP_PRIVATE_KEY);
