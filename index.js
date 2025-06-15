@@ -46,6 +46,14 @@ app.post('/api/a2u-test', async (req, res) => {
     const paymentIdentifier = createRes.data.identifier;
     const recipientAddress = createRes.data.recipient;
 
+    if (!paymentIdentifier) {
+    console.error("🚨 paymentIdentifier không tồn tại!");
+    return res.status(500).json({ success: false, message: "Không có paymentIdentifier!" });
+    }
+    
+    if (!recipientAddress) {
+    return res.status(500).json({ success: false, message: "Không có recipientAddress!" });
+    }
     console.log("✅ Payment ID:", paymentIdentifier);
     console.log("✅ Recipient Address:", recipientAddress);
 
