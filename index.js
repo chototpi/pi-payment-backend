@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
-const StellarSdk = require('@stellar/stellar-sdk');
+const StellarSdk = require('stellar-sdk');
 
 const app = express();
 app.use(express.json());
@@ -12,7 +12,7 @@ const APP_PUBLIC_KEY = process.env.APP_PUBLIC_KEY;
 const APP_PRIVATE_KEY = process.env.APP_PRIVATE_KEY;
 
 const axiosClient = axios.create({
-  baseURL: 'https://api.testnet.minepi.com',
+  baseURL: 'https://api.testnet.minepi.com', // ✅ Sửa thành testnet
   timeout: 20000,
   headers: {
     Authorization: `Key ${PI_API_KEY}`,
@@ -22,6 +22,12 @@ const axiosClient = axios.create({
 
 app.post('/api/a2u-test', async (req, res) => {
   const { uid, amount, memo } = req.body;
+
+  console.log("🔍 A2U REQUEST:");
+  console.log("📌 UID:", uid);
+  console.log("📌 AMOUNT:", amount);
+  console.log("📌 MEMO:", memo);
+  console.log("📌 PI_API_KEY starts with:", PI_API_KEY?.slice(0, 6));
 
   if (!uid || !amount || !memo) {
     return res.status(400).json({ success: false, message: 'Thiếu uid, amount hoặc memo' });
@@ -35,9 +41,13 @@ app.post('/api/a2u-test', async (req, res) => {
       uid
     };
 
+    console.log("📤 Đang gửi tới Pi API /v2/payments ...");
     const createRes = await axiosClient.post('/v2/payments', body);
     const paymentIdentifier = createRes.data.identifier;
     const recipientAddress = createRes.data.recipient;
+
+    console.log("✅ Payment ID:", paymentIdentifier);
+    console.log("✅ Recipient Address:", recipientAddress);
 
     const server = new StellarSdk.Server('https://api.testnet.minepi.com');
     const sourceAccount = await server.loadAccount(APP_PUBLIC_KEY);
@@ -76,7 +86,7 @@ app.post('/api/a2u-test', async (req, res) => {
       timebounds
     })
       .addOperation(operation)
-      .addMemo(StellarSdk.Memo.text(paymentIdentifier.slice(0, 28))) // limit Memo length
+      .addMemo(StellarSdk.Memo.text(paymentIdentifier.slice(0, 28)))
       .build();
 
     const keypair = StellarSdk.Keypair.fromSecret(APP_PRIVATE_KEY);
@@ -84,6 +94,8 @@ app.post('/api/a2u-test', async (req, res) => {
 
     const txResult = await server.submitTransaction(tx);
     const txid = txResult.id;
+
+    console.log("✅ Transaction sent, txid:", txid);
 
     await axiosClient.post(`/v2/payments/${paymentIdentifier}/complete`, { txid });
 
