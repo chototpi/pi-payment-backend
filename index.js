@@ -24,7 +24,7 @@ const axiosClient = axios.create({
 
 app.post("/api/a2u-test", async (req, res) => {
   const { uid, amount } = req.body;
-  const memo = "A2U-test-001"; // Cố định để kiểm tra dễ
+  const memo = "A2U-test"; // Cố định để kiểm tra dễ
 
   console.log("🔍 A2U REQUEST:");
   console.log("📌 UID:", uid);
