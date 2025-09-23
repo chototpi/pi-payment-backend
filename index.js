@@ -102,6 +102,7 @@ app.post("/api/a2u-test", async (req, res) => {
 // =============================
 // Khởi động server
 // =============================
+// 🔑 Lắng nghe PORT của Render hoặc fallback về 3000
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`✅ A2U Testnet backend đang chạy tại cổng ${PORT}`);
