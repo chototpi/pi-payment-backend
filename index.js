@@ -7,7 +7,16 @@ const { Server, Keypair, Asset, Operation, TransactionBuilder, Memo } = pkg;
 
 const app = express();
 app.use(express.json());
-app.use(cors({ origin: "https://chototpi.site" })); // frontend domain
+app.use(
+  cors({
+    origin: [
+      "https://chototpi.site",
+      "https://payofpi.click",
+      "https://testnet.chototpi.site",
+      "https://vn.payofpi.click",
+    ],
+  })
+);
 
 // 🔑 Biến môi trường
 const PI_API_KEY = process.env.PI_API_KEY;       // API Key lấy từ Developer Portal (testnet)
