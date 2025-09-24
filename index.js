@@ -94,33 +94,48 @@ async function submitStellarTransaction(destination, amount, memo) {
 // =============================
 // ROUTER: A2U Testnet
 // =============================
+// =============================
+// ROUTER: A2U Testnet (Phiên bản ổn định)
+// =============================
 app.post("/api/a2u-payment", async (req, res) => {
   const { amount, accessToken } = req.body;
   const memo = "Payment from My Awesome App";
 
-  // 1. [Bảo mật] Kiểm tra đầu vào. Access Token là BẮT BUỘC.
+  // 1. Kiểm tra đầu vào cơ bản
   if (!amount || !accessToken) {
-    return res.status(400).json({ message: "Thiếu amount hoặc accessToken" });
+    return res.status(400).json({ success: false, message: "Thiếu 'amount' hoặc 'accessToken'" });
   }
 
-  // 2. Xác thực người dùng với Pi Network
+  // 2. Xác thực người dùng và lấy thông tin từ Pi Network
   const userInfo = await fetchPiUser(accessToken);
   if (!userInfo) {
-    return res.status(401).json({ message: "Access Token không hợp lệ hoặc đã hết hạn" });
+    return res.status(401).json({ success: false, message: "Access Token không hợp lệ hoặc đã hết hạn" });
+  }
+
+  // ✅ [DEBUG] In ra thông tin user vừa lấy được để kiểm tra.
+  // Đây là bước quan trọng nhất để xác nhận bạn có nhận được UID dạng 'SANDBOX_...' hay không.
+  console.log("✅ [DEBUG] Dữ liệu người dùng nhận được từ Pi Server:", userInfo);
+
+  // ✅ [BẢO VỆ] Kiểm tra kỹ xem object user trả về có thuộc tính 'uid' không.
+  // Điều này giúp phòng trường hợp Pi API thay đổi hoặc trả về dữ liệu không mong muốn.
+  if (!userInfo.uid) {
+    console.error("❌ Lỗi nghiêm trọng: Dữ liệu user từ Pi API không chứa UID.", userInfo);
+    return res.status(500).json({ success: false, message: "Không thể xử lý vì thiếu UID người dùng." });
   }
   
-  // ✅ [Ổn định] Tạo một key duy nhất cho mỗi yêu cầu thanh toán
+  // Tạo một key duy nhất cho mỗi yêu cầu để tránh thanh toán lặp lại
   const idempotencyKey = uuidv4();
 
   try {
     // 3. Tạo payment trên Pi Server để lấy địa chỉ ví người nhận
     const createPaymentBody = {
-      recipient: userInfo.uid, // ✅ [Sửa lỗi] Dùng 'recipient' thay vì 'uid'
+      recipient: userInfo.uid, // Sử dụng UID đã được xác thực
       amount,
       memo,
-      metadata: { orderId: 'your_internal_order_id_123' },
+      metadata: { internal_order_id: 'ORDER_XYZ_789' }, // Dữ liệu riêng của bạn
     };
     
+    console.log(`⏳ Đang tạo payment cho user: ${userInfo.uid} với số tiền: ${amount}`);
     const { data: createdPayment } = await axiosClient.post("/v2/payments", createPaymentBody, {
       headers: { 
         'Authorization': `Key ${PI_API_KEY}`,
@@ -134,6 +149,7 @@ app.post("/api/a2u-payment", async (req, res) => {
     const txid = await submitStellarTransaction(recipient_address, amount, memo);
     
     // 5. Hoàn tất payment trên Pi Server
+    console.log(`⏳ Đang hoàn tất payment ${identifier} với txid: ${txid}`);
     await axiosClient.post(`/v2/payments/${identifier}/complete`, { txid }, {
       headers: { 
         'Authorization': `Key ${PI_API_KEY}`,
@@ -141,16 +157,16 @@ app.post("/api/a2u-payment", async (req, res) => {
       }
     });
 
-    console.log(`🎉 Payment ${identifier} hoàn tất với TXID: ${txid}`);
+    console.log(`🎉 Payment ${identifier} hoàn tất thành công!`);
     return res.json({ success: true, paymentId: identifier, txid });
 
   } catch (err) {
+    // Ghi log lỗi chi tiết hơn để dễ dàng debug
     const errorDetails = err.response?.data || { message: err.message };
-    console.error("❌ Lỗi trong quá trình A2U:", JSON.stringify(errorDetails, null, 2));
+    console.error("❌ Lỗi trong quá trình xử lý thanh toán A2U:", JSON.stringify(errorDetails, null, 2));
     
-    // TODO: Gửi yêu cầu cancel payment đến Pi Server nếu có lỗi xảy ra sau khi đã tạo payment
-    // Ví dụ: await axiosClient.post(`/v2/payments/${identifier}/cancel`, ...);
-
+    // Gợi ý: Tại đây bạn có thể thêm logic để gọi API /cancel của Pi nếu payment đã được tạo nhưng các bước sau thất bại.
+    
     return res.status(500).json({
       success: false,
       message: "Lỗi xử lý thanh toán A2U",
