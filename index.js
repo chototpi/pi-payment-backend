@@ -35,23 +35,15 @@ const piPlatform = axios.create({
  * Lấy thông tin user (ưu tiên accessToken -> /v2/me)
  * Nếu không có accessToken sẽ fallback GET /v2/users/:uid (dùng API key)
  */
-async function fetchUserInfo({ uid, accessToken }) {
+async function fetchUserInfo(accessToken) {
   try {
-    if (accessToken) {
-      // GET /v2/me với Bearer token
-      const resp = await axios.get(`${PLATFORM_BASE}/v2/me`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        timeout: 10000,
-      });
-      return resp.data;
-    } else {
-      // Fallback: dùng API key để GET /v2/users/:uid
-      const resp = await piPlatform.get(`/v2/users/${uid}`);
-      return resp.data;
-    }
+    const res = await axios.get("https://api.minepi.com/v2/me", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    return res.data;
   } catch (err) {
-    // trả lỗi nguyên gốc lên caller để debug
-    throw err;
+    console.error("⚠️ fetchUserInfo failed:", err.response?.data || err.message);
+    return null;
   }
 }
 
@@ -90,83 +82,67 @@ app.post("/api/a2u-test", async (req, res) => {
     return res.status(400).json({ success: false, message: "Thiếu uid, username hoặc amount" });
   }
 
+  let userInfo = null;
+
+  if (accessToken) {
+    // 🔑 Có accessToken → gọi /v2/me để xác thực
+    userInfo = await fetchUserInfo(accessToken);
+    if (!userInfo) {
+      return res.status(401).json({ success: false, message: "Không xác thực được user từ Pi Network" });
+    }
+  } else {
+    // 🚫 Không có accessToken → fallback dùng uid + username từ client
+    userInfo = { uid, username };
+  }
+
   try {
-    // 1) Lấy user info (ưu tiên accessToken)
-    let userData;
-    try {
-      userData = await fetchUserInfo({ uid, accessToken });
-      console.log("✅ userData from platform:", userData && Object.keys(userData).slice(0,8));
-    } catch (e) {
-      console.warn("⚠️ fetchUserInfo failed:", e.response?.data || e.message);
-      // trả lỗi rõ cho frontend
-      return res.status(400).json({
-        success: false,
-        message: "Không thể lấy thông tin user từ Platform API",
-        error: e.response?.data || e.message,
-      });
-    }
-
-    // 2) Lấy wallet address từ userData
-    const walletAddress = extractWalletAddress(userData);
-    if (!walletAddress) {
-      console.warn("⚠️ Không tìm thấy wallet address in userData:", userData);
-      return res.status(400).json({
-        success: false,
-        message: "User chưa có wallet address khả dụng trên Platform. Vui lòng kiểm tra ví Pi của bạn.",
-        userData,
-      });
-    }
-
-    console.log("➡️ walletAddress resolved:", walletAddress);
-
-    // 3) Tạo payment trên Pi Platform (ghi nhận payment)
-    const createBody = { amount, memo, metadata: { type: "A2U" }, uid, username };
-    const createRes = await piPlatform.post("/v2/payments", createBody);
+    // 1. Tạo payment
+    const body = { amount, memo, metadata: { type: "A2U" }, uid: userInfo.uid, username: userInfo.username };
+    const createRes = await axiosClient.post("/v2/payments", body);
     const paymentIdentifier = createRes.data.identifier;
-    const recipientFromCreate = createRes.data.recipient; // platform có thể trả recipient hoặc không
+    const recipientAddress = createRes.data.recipient;
 
-    console.log("✅ Payment created:", { paymentIdentifier, recipientFromCreate });
+    console.log("✅ Payment created:", paymentIdentifier);
 
-    // 4) Quyết định recipientAddress: ưu tiên recipientFromCreate nếu có, fallback walletAddress
-    const recipientAddress = (recipientFromCreate && typeof recipientFromCreate === "string") ? recipientFromCreate : walletAddress;
-    console.log("➡️ recipientAddress used:", recipientAddress);
-
-    // 5) Load source account (app wallet) trên Horizon testnet và build tx
+    // 2. Load account
     const server = new Server(HORIZON_URL);
     const sourceAccount = await server.loadAccount(APP_PUBLIC_KEY);
     const baseFee = await server.fetchBaseFee();
-    // use setTimeout instead of fetchTimebounds for simplicity
+    const timebounds = await server.fetchTimebounds(180);
+
+    // 3. Build transaction
     const tx = new TransactionBuilder(sourceAccount, {
       fee: baseFee.toString(),
       networkPassphrase: NETWORK_PASSPHRASE,
+      timebounds,
     })
-      .addOperation(Operation.payment({
-        destination: recipientAddress,
-        asset: Asset.native(),
-        amount: amount.toString(),
-      }))
+      .addOperation(
+        Operation.payment({
+          destination: recipientAddress,
+          asset: Asset.native(),
+          amount: amount.toString(),
+        })
+      )
       .addMemo(Memo.text(memo))
-      .setTimeout(180)
       .build();
 
     const keypair = Keypair.fromSecret(APP_PRIVATE_KEY);
     tx.sign(keypair);
 
-    // 6) Submit tx to Horizon testnet
     const txResult = await server.submitTransaction(tx);
     const txid = txResult.id;
-    console.log("✅ Transaction submitted txid:", txid);
+    console.log("✅ Transaction submitted:", txid);
 
-    // 7) Complete payment on Platform
-    await piPlatform.post(`/v2/payments/${paymentIdentifier}/complete`, { txid });
+    // 4. Complete payment
+    await axiosClient.post(`/v2/payments/${paymentIdentifier}/complete`, { txid });
 
     return res.json({ success: true, paymentId: paymentIdentifier, txid });
   } catch (err) {
-    console.error("❌ Lỗi A2U:", err.response?.data || err.message || err);
+    console.error("❌ Lỗi A2U:", err.response?.data || err.message);
     return res.status(500).json({
       success: false,
       message: "Lỗi xử lý A2U",
-      error: err.response?.data || err.message || String(err),
+      error: err.response?.data || err.message,
     });
   }
 });
