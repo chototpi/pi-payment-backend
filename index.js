@@ -51,58 +51,74 @@ async function fetchUserInfo(accessToken) {
 // =============================
 // 📌 ROUTER: A2U Testnet
 // =============================
+// =============================
+// 📌 ROUTER: A2U Testnet (sửa lỗi user_not_found)
+// =============================
 app.post("/api/a2u-test", async (req, res) => {
   const { uid, username, amount, accessToken } = req.body;
   const memo = "A2U-test";
 
   console.log("🔍 A2U REQUEST:", { uid, username, amount, hasAccessToken: !!accessToken });
 
-  if (!uid || !username || !amount) {
-    return res.status(400).json({ success: false, message: "Thiếu uid, username hoặc amount" });
+  // Check dữ liệu cơ bản
+  if ((!uid && !accessToken) || !username || !amount) {
+    return res.status(400).json({
+      success: false,
+      message: "Thiếu uid, username hoặc amount",
+    });
   }
 
   let userInfo = null;
 
-  if (accessToken) {
-    // 🔑 Có accessToken → gọi /v2/me
-    userInfo = await fetchUserInfo(accessToken);
-    if (!userInfo) {
-      return res.status(401).json({ success: false, message: "Không xác thực được user từ Pi Network" });
-    }
-  } else {
-    // 🚫 Không có accessToken → fallback
-    userInfo = { uid, username };
-  }
-
   try {
-    // 1. Tạo payment trên Pi Server
+    if (accessToken) {
+      // 🔑 Có accessToken → gọi /v2/me để lấy UID chính xác
+      userInfo = await fetchUserInfo(accessToken);
+      if (!userInfo || !userInfo.uid) {
+        return res.status(401).json({
+          success: false,
+          message: "Không xác thực được user từ Pi Network",
+        });
+      }
+    } else {
+      // 🚫 Không có accessToken → dùng UID và username frontend gửi lên
+      if (!uid) {
+        return res.status(400).json({ success: false, message: "UID trống" });
+      }
+      userInfo = { uid, username };
+    }
+
+    console.log("✅ User info chuẩn bị giao dịch:", userInfo);
+
+    // 1️⃣ Tạo payment trên Pi Server
     const body = {
+      uid: userInfo.uid,
+      username: userInfo.username,
       amount,
       memo,
       metadata: { type: "A2U" },
-      uid: userInfo.uid,
-      username: userInfo.username,
     };
+
+    console.log("💡 Payload create payment:", body);
 
     const createRes = await axiosClient.post("/v2/payments", body);
     const paymentIdentifier = createRes.data.identifier;
     const recipientAddress = createRes.data.recipient;
 
-    console.log("✅ Payment created:", paymentIdentifier);
+    console.log("✅ Payment created:", paymentIdentifier, "Recipient:", recipientAddress);
 
-    // 2. Load account testnet
+    // 2️⃣ Load account testnet
     const server = new Server(HORIZON_URL);
     const sourceAccount = await server.loadAccount(APP_PUBLIC_KEY);
     const baseFee = await server.fetchBaseFee();
     const timebounds = await server.fetchTimebounds(180);
 
-    // 3. Giao dịch Stellar
+    // 3️⃣ Giao dịch Stellar
     const tx = new TransactionBuilder(sourceAccount, {
       fee: baseFee.toString(),
       networkPassphrase: NETWORK_PASSPHRASE,
       timebounds,
-
-})
+    })
       .addOperation(
         Operation.payment({
           destination: recipientAddress,
@@ -118,11 +134,14 @@ app.post("/api/a2u-test", async (req, res) => {
 
     const txResult = await server.submitTransaction(tx);
     const txid = txResult.id;
+
     console.log("✅ Transaction submitted:", txid);
 
-    // 4. Complete payment
-    await axiosClient.post(`/v2/payments/${paymentIdentifier}/complete`, { txid });
+    // 4️⃣ Complete payment
+    console.log("💡 Completing payment for UID:", userInfo.uid);
+    console.log("PaymentIdentifier:", paymentIdentifier, "TXID:", txid);
 
+    await axiosClient.post(`/v2/payments/${paymentIdentifier}/complete`, { txid });
     return res.json({ success: true, paymentId: paymentIdentifier, txid });
   } catch (err) {
     console.error("❌ Lỗi A2U:", err.response?.data || err.message);
