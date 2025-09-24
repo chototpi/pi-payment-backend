@@ -8,7 +8,7 @@ const { Server, Keypair, Asset, Operation, TransactionBuilder, Memo } = pkg;
 
 const app = express();
 app.use(express.json());
-app.use(cors());
+app.use(cors({ origin: "*" }));
 
 // 🔑 Biến môi trường
 const PI_API_KEY = process.env.PI_API_KEY;          // API Key từ Developer Portal
