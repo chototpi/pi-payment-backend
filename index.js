@@ -1,16 +1,15 @@
-// backend/index.js
+// src/index.js
 import express from "express";
 import cors from "cors";
 import axios from "axios";
-import pkg from "@stellar/stellar-sdk";
+import { Server, Keypair, Asset, Operation, TransactionBuilder, Memo } from "@stellar/stellar-sdk";
 
-const { Server, Keypair, Asset, Operation, TransactionBuilder, Memo } = pkg;
 const app = express();
 app.use(cors({ origin: "*" }));
 app.use(express.json());
 
 // 🔑 Biến môi trường
-const PI_API_KEY = process.env.PI_API_KEY;       // key của app Testnet
+const PI_API_KEY = process.env.PI_API_KEY;       // Key Testnet app
 const APP_PUBLIC_KEY = process.env.APP_PUBLIC_KEY;
 const APP_PRIVATE_KEY = process.env.APP_PRIVATE_KEY;
 const HORIZON_URL = "https://api.testnet.minepi.com";
@@ -39,7 +38,7 @@ app.post("/api/a2u-test", async (req, res) => {
   }
 
   try {
-    // 1️⃣ Create payment trên Pi Testnet
+    // 1️⃣ Tạo payment trên Pi Testnet
     const createRes = await axiosClient.post("/v2/payments", {
       amount,
       memo,
