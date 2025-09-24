@@ -18,8 +18,9 @@ const APP_PRIVATE_KEY = process.env.APP_PRIVATE_KEY;
 const HORIZON_URL = "https://api.testnet.minepi.com";
 const NETWORK_PASSPHRASE = "Pi Testnet";
 
+// Axios client cho Pi Server
 const axiosClient = axios.create({
-  baseURL: "https://api.minepi.com",
+  baseURL: "https://api.testnet.minepi.com",
   timeout: 15000,
   headers: {
     Authorization: `Key ${PI_API_KEY}`,
@@ -28,11 +29,11 @@ const axiosClient = axios.create({
 });
 
 // =============================
-// 📌 Fetch user info từ Pi API
+// 📌 Fetch user info từ Pi Testnet bằng accessToken
 // =============================
 async function fetchUserInfo(accessToken) {
   try {
-    const res = await axios.get("https://api.minepi.com/v2/me", {
+    const res = await axios.get("https://api.testnet.minepi.com/v2/me", {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     return res.data;
@@ -43,7 +44,7 @@ async function fetchUserInfo(accessToken) {
 }
 
 // =============================
-// 📌 A2U Testnet Endpoint
+// 📌 A2U Testnet Endpoint chuẩn
 // =============================
 app.post("/api/a2u-test", async (req, res) => {
   const { uid, username, amount, accessToken } = req.body;
@@ -58,19 +59,20 @@ app.post("/api/a2u-test", async (req, res) => {
   let userInfo = null;
 
   try {
+    // ✅ Nếu có accessToken, lấy UID/username chính xác từ Pi Testnet
     if (accessToken) {
       userInfo = await fetchUserInfo(accessToken);
       if (!userInfo || !userInfo.uid) {
-        return res.status(401).json({ success: false, message: "Không xác thực được user từ Pi Network" });
+        return res.status(401).json({ success: false, message: "Không xác thực được user từ Pi Testnet" });
       }
     } else {
-      if (!uid) return res.status(400).json({ success: false, message: "UID trống" });
+      // 🚫 Fallback dùng UID + username frontend gửi
       userInfo = { uid, username };
     }
 
     console.log("✅ User info chuẩn bị giao dịch:", userInfo);
 
-    // 1️⃣ Tạo payment trên Pi Server
+    // 1️⃣ Tạo payment trên Pi Testnet
     const body = { uid: userInfo.uid, username: userInfo.username, amount, memo, metadata: { type: "A2U" } };
     console.log("💡 Payload create payment:", body);
 
@@ -87,7 +89,7 @@ app.post("/api/a2u-test", async (req, res) => {
     const timebounds = await server.fetchTimebounds(180);
 
     // 3️⃣ Giao dịch Stellar
-  const tx = new TransactionBuilder(sourceAccount, {
+    const tx = new TransactionBuilder(sourceAccount, {
       fee: baseFee.toString(),
       networkPassphrase: NETWORK_PASSPHRASE,
       timebounds,
