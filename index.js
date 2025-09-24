@@ -1,3 +1,4 @@
+// index.js
 import express from "express";
 import cors from "cors";
 import axios from "axios";
@@ -19,13 +20,24 @@ app.use(
 );
 
 // 🔑 Biến môi trường
-const PI_API_KEY = process.env.PI_API_KEY;       // API Key lấy từ Developer Portal (testnet)
-const APP_PUBLIC_KEY = process.env.APP_PUBLIC_KEY;   // ví app testnet (G...)
-const APP_PRIVATE_KEY = process.env.APP_PRIVATE_KEY; // secret key ví app testnet (S...)
+const PI_API_KEY = process.env.PI_API_KEY;          // API Key từ Developer Portal
+const APP_PUBLIC_KEY = process.env.APP_PUBLIC_KEY;  // ví app testnet/mainnet (G...)
+const APP_PRIVATE_KEY = process.env.APP_PRIVATE_KEY; // secret key ví app testnet/mainnet (S...)
 
-// Client gọi API Pi Network
+// Horizon + Network Passphrase
+const HORIZON_URL =
+  process.env.NODE_ENV === "production"
+    ? process.env.PI_BACKEND_HORIZON_TESTNET_URL   // Testnet khi chạy production
+    : process.env.PI_BACKEND_HORIZON_MAINNET_URL;  // Mainnet nếu NODE_ENV != production
+
+const NETWORK_PASSPHRASE =
+  process.env.NODE_ENV === "production"
+    ? process.env.PI_BACKEND_HORIZON_TESTNET_PASSPHRASE
+    : process.env.PI_BACKEND_HORIZON_MAINNET_PASSPHRASE;
+
+// Client gọi Pi Platform API (dùng chung cho cả testnet/mainnet)
 const axiosClient = axios.create({
-  baseURL: "https://api.testnet.minepi.com", // ✅ dùng testnet
+  baseURL: process.env.PI_BACKEND_PLATFORM_BASE_URL, // luôn là https://api.minepi.com
   timeout: 15000,
   headers: {
     Authorization: `Key ${PI_API_KEY}`,
@@ -34,11 +46,11 @@ const axiosClient = axios.create({
 });
 
 // =============================
-// 📌 ROUTER: A2U Testnet
+// 📌 ROUTER: A2U Test
 // =============================
 app.post("/api/a2u-test", async (req, res) => {
   const { uid, amount } = req.body;
-  const memo = "A2U-test"; // để nhận biết giao dịch test
+  const memo = "A2U-test";
 
   console.log("🔍 A2U REQUEST:", { uid, amount, memo });
 
@@ -47,7 +59,7 @@ app.post("/api/a2u-test", async (req, res) => {
   }
 
   try {
-    // 1. Tạo payment trên Pi Server
+    // 1. Tạo payment trên Pi Platform API
     const body = { amount, memo, metadata: { type: "A2U" }, uid };
     const createRes = await axiosClient.post("/v2/payments", body);
     const paymentIdentifier = createRes.data.identifier;
@@ -56,16 +68,16 @@ app.post("/api/a2u-test", async (req, res) => {
     console.log("✅ Payment created:", paymentIdentifier);
     console.log("➡️ Recipient:", recipientAddress);
 
-    // 2. Load tài khoản nguồn (app wallet testnet)
-    const server = new Server("https://api.minepi.com");
+    // 2. Load tài khoản nguồn (app wallet)
+    const server = new Server(HORIZON_URL);
     const sourceAccount = await server.loadAccount(APP_PUBLIC_KEY);
     const baseFee = await server.fetchBaseFee();
     const timebounds = await server.fetchTimebounds(180);
 
-    // 3. Tạo giao dịch Stellar (Pi Testnet)
+    // 3. Tạo giao dịch Stellar (Pi Testnet hoặc Mainnet)
     const tx = new TransactionBuilder(sourceAccount, {
       fee: baseFee.toString(),
-      networkPassphrase: "Pi Testnet",
+      networkPassphrase: NETWORK_PASSPHRASE,
       timebounds,
     })
       .addOperation(
@@ -75,7 +87,7 @@ app.post("/api/a2u-test", async (req, res) => {
           amount: amount.toString(),
         })
       )
-      .addMemo(Memo.text(memo))
+    .addMemo(Memo.text(memo))
       .build();
 
     const keypair = Keypair.fromSecret(APP_PRIVATE_KEY);
@@ -89,6 +101,7 @@ app.post("/api/a2u-test", async (req, res) => {
     await axiosClient.post(`/v2/payments/${paymentIdentifier}/complete`, { txid });
 
     return res.json({ success: true, paymentId: paymentIdentifier, txid });
+
   } catch (err) {
     console.error("❌ Lỗi A2U:", err.response?.data || err.message);
     return res.status(500).json({
@@ -102,8 +115,7 @@ app.post("/api/a2u-test", async (req, res) => {
 // =============================
 // Khởi động server
 // =============================
-// 🔑 Lắng nghe PORT của Render hoặc fallback về 3000
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`✅ A2U Testnet backend đang chạy tại cổng ${PORT}`);
+  console.log(`✅ A2U backend đang chạy tại cổng ${PORT}`);
 });
