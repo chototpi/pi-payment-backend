@@ -57,7 +57,7 @@ app.post("/api/a2u-test", async (req, res) => {
     console.log("➡️ Recipient:", recipientAddress);
 
     // 2. Load tài khoản nguồn (app wallet testnet)
-    const server = new Server("https://api.minepi.com");
+    const server = new Server("https://api.testnet.minepi.com");
     const sourceAccount = await server.loadAccount(APP_PUBLIC_KEY);
     const baseFee = await server.fetchBaseFee();
     const timebounds = await server.fetchTimebounds(180);
