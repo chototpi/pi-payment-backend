@@ -14,7 +14,7 @@ app.use(express.json());
 // =============================
 
 // ✅ [Bảo mật] Chỉ cho phép domain của app bạn truy cập
-const allowedOrigins = ['https://your-app-domain.com', 'pi://your-app-identifier'];
+const allowedOrigins = ['https://testnet.chototpi.site', 'https://vn.payofpi.click'];
 app.use(
   cors({
     origin: function (origin, callback) {
