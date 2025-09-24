@@ -33,7 +33,7 @@ if (!PI_API_KEY || !APP_PUBLIC_KEY || !APP_PRIVATE_KEY) {
   throw new Error("Vui lòng cung cấp đủ các biến môi trường: PI_API_KEY, APP_PUBLIC_KEY, APP_PRIVATE_KEY");
 }
 
-const PI_API_BASE_URL = "https://api.testnet.minepi.com";
+const PI_API_BASE_URL = "https://api.minepi.com";
 const HORIZON_URL = "https://api.testnet.minepi.com";
 const NETWORK_PASSPHRASE = "Pi Testnet";
 
