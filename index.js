@@ -25,7 +25,7 @@ const APP_PRIVATE_KEY = process.env.APP_PRIVATE_KEY; // secret key ví app testn
 
 // Client gọi API Pi Network
 const axiosClient = axios.create({
-  baseURL: "https://api.testnet.minepi.com", // ✅ dùng testnet
+  baseURL: "https://api.minepi.com", // ✅ dùng testnet
   timeout: 15000,
   headers: {
     Authorization: `Key ${PI_API_KEY}`,
@@ -57,7 +57,7 @@ app.post("/api/a2u-test", async (req, res) => {
     console.log("➡️ Recipient:", recipientAddress);
 
     // 2. Load tài khoản nguồn (app wallet testnet)
-    const server = new Server("https://api.testnet.minepi.com");
+    const server = new Server("https://api.minepi.com");
     const sourceAccount = await server.loadAccount(APP_PUBLIC_KEY);
     const baseFee = await server.fetchBaseFee();
     const timebounds = await server.fetchTimebounds(180);
