@@ -5,36 +5,60 @@ import axios from "axios";
 import pkg from "@stellar/stellar-sdk";
 
 const { Server, Keypair, Asset, Operation, TransactionBuilder, Memo } = pkg;
-
 const app = express();
-app.use(express.json());
 app.use(cors({ origin: "*" }));
+app.use(express.json());
 
 // 🔑 Biến môi trường
-const APP_PUBLIC_KEY = process.env.APP_PUBLIC_KEY;     // Key Stellar testnet của app
-const APP_PRIVATE_KEY = process.env.APP_PRIVATE_KEY;   // Secret Key Stellar testnet
+const PI_API_KEY = process.env.PI_API_KEY;       // key của app Testnet
+const APP_PUBLIC_KEY = process.env.APP_PUBLIC_KEY;
+const APP_PRIVATE_KEY = process.env.APP_PRIVATE_KEY;
 const HORIZON_URL = "https://api.testnet.minepi.com";
 const NETWORK_PASSPHRASE = "Pi Testnet";
+
+const axiosClient = axios.create({
+  baseURL: "https://api.testnet.minepi.com",
+  timeout: 15000,
+  headers: {
+    Authorization: `Key ${PI_API_KEY}`,
+    "Content-Type": "application/json",
+  },
+});
 
 const server = new Server(HORIZON_URL);
 
 // =============================
-// 📌 A2U Testnet Endpoint
+// 📌 ROUTER: A2U Testnet chuẩn
 // =============================
 app.post("/api/a2u-test", async (req, res) => {
-  const { recipientPubKey, amount } = req.body;
+  const { uid, username, amount } = req.body;
+  const memo = "A2U-test";
 
-  if (!recipientPubKey || !amount) {
-    return res.status(400).json({ success: false, message: "Thiếu recipientPubKey hoặc amount" });
+  if (!uid || !username || !amount) {
+    return res.status(400).json({ success: false, message: "Thiếu uid, username hoặc amount" });
   }
 
   try {
-    // Load account app
+    // 1️⃣ Create payment trên Pi Testnet
+    const createRes = await axiosClient.post("/v2/payments", {
+      amount,
+      memo,
+      metadata: { type: "A2U" },
+      uid,
+      username,
+    });
+
+    const paymentIdentifier = createRes.data.identifier;
+    const recipientPubKey = createRes.data.recipient;
+
+    console.log("✅ Payment created:", paymentIdentifier, recipientPubKey);
+
+    // 2️⃣ Load account app
     const sourceAccount = await server.loadAccount(APP_PUBLIC_KEY);
     const baseFee = await server.fetchBaseFee();
     const timebounds = await server.fetchTimebounds(180);
 
-    // Build transaction
+    // 3️⃣ Tạo Stellar transaction
     const tx = new TransactionBuilder(sourceAccount, {
       fee: baseFee.toString(),
       networkPassphrase: NETWORK_PASSPHRASE,
@@ -45,7 +69,7 @@ app.post("/api/a2u-test", async (req, res) => {
         asset: Asset.native(),
         amount: amount.toString(),
       }))
-      .addMemo(Memo.text("A2U-test"))
+      .addMemo(Memo.text(memo))
       .build();
 
     const keypair = Keypair.fromSecret(APP_PRIVATE_KEY);
@@ -53,15 +77,21 @@ app.post("/api/a2u-test", async (req, res) => {
 
     const txResult = await server.submitTransaction(tx);
     const txid = txResult.id;
-
     console.log("✅ Transaction submitted:", txid);
 
-    return res.json({ success: true, txid });
+    // 4️⃣ Complete payment
+    await axiosClient.post(`/v2/payments/${paymentIdentifier}/complete`, { txid });
+
+    return res.json({ success: true, paymentId: paymentIdentifier, txid });
   } catch (err) {
     console.error("❌ Lỗi A2U:", err.response?.data || err.message);
-    return res.status(500).json({ success: false, message: "Lỗi xử lý A2U", error: err.response?.data || err.message });
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi xử lý A2U",
+      error: err.response?.data || err.message,
+    });
   }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`✅ A2U Testnet backend chạy tại cổng ${PORT}`));
+app.listen(PORT, () => console.log(`✅ Backend A2U Testnet chạy cổng ${PORT}`));
