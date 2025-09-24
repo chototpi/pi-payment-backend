@@ -1,3 +1,4 @@
+// backend/index.js
 import express from "express";
 import cors from "cors";
 import axios from "axios";
@@ -7,13 +8,7 @@ const { Server, Keypair, Asset, Operation, TransactionBuilder, Memo } = pkg;
 
 const app = express();
 app.use(express.json());
-
-// ✅ CORS cho tất cả domain
-app.use(
-  cors({
-    origin: "*",
-  })
-);
+app.use(cors({ origin: "*" }));
 
 // 🔑 Biến môi trường
 const PI_API_KEY = process.env.PI_API_KEY;
@@ -23,7 +18,6 @@ const APP_PRIVATE_KEY = process.env.APP_PRIVATE_KEY;
 const HORIZON_URL = "https://api.testnet.minepi.com";
 const NETWORK_PASSPHRASE = "Pi Testnet";
 
-// Axios client cho Pi Server
 const axiosClient = axios.create({
   baseURL: "https://api.minepi.com",
   timeout: 15000,
@@ -34,7 +28,7 @@ const axiosClient = axios.create({
 });
 
 // =============================
-// 📌 Hàm fetch user từ Pi API (nếu có accessToken)
+// 📌 Fetch user info từ Pi API
 // =============================
 async function fetchUserInfo(accessToken) {
   try {
@@ -49,10 +43,7 @@ async function fetchUserInfo(accessToken) {
 }
 
 // =============================
-// 📌 ROUTER: A2U Testnet
-// =============================
-// =============================
-// 📌 ROUTER: A2U Testnet (sửa lỗi user_not_found)
+// 📌 A2U Testnet Endpoint
 // =============================
 app.post("/api/a2u-test", async (req, res) => {
   const { uid, username, amount, accessToken } = req.body;
@@ -60,45 +51,27 @@ app.post("/api/a2u-test", async (req, res) => {
 
   console.log("🔍 A2U REQUEST:", { uid, username, amount, hasAccessToken: !!accessToken });
 
-  // Check dữ liệu cơ bản
   if ((!uid && !accessToken) || !username || !amount) {
-    return res.status(400).json({
-      success: false,
-      message: "Thiếu uid, username hoặc amount",
-    });
+    return res.status(400).json({ success: false, message: "Thiếu uid, username hoặc amount" });
   }
 
   let userInfo = null;
 
   try {
     if (accessToken) {
-      // 🔑 Có accessToken → gọi /v2/me để lấy UID chính xác
       userInfo = await fetchUserInfo(accessToken);
       if (!userInfo || !userInfo.uid) {
-        return res.status(401).json({
-          success: false,
-          message: "Không xác thực được user từ Pi Network",
-        });
+        return res.status(401).json({ success: false, message: "Không xác thực được user từ Pi Network" });
       }
     } else {
-      // 🚫 Không có accessToken → dùng UID và username frontend gửi lên
-      if (!uid) {
-        return res.status(400).json({ success: false, message: "UID trống" });
-      }
+      if (!uid) return res.status(400).json({ success: false, message: "UID trống" });
       userInfo = { uid, username };
     }
 
     console.log("✅ User info chuẩn bị giao dịch:", userInfo);
 
     // 1️⃣ Tạo payment trên Pi Server
-    const body = {
-      uid: userInfo.uid,
-      username: userInfo.username,
-      amount,
-      memo,
-      metadata: { type: "A2U" },
-    };
-
+    const body = { uid: userInfo.uid, username: userInfo.username, amount, memo, metadata: { type: "A2U" } };
     console.log("💡 Payload create payment:", body);
 
     const createRes = await axiosClient.post("/v2/payments", body);
@@ -114,18 +87,12 @@ app.post("/api/a2u-test", async (req, res) => {
     const timebounds = await server.fetchTimebounds(180);
 
     // 3️⃣ Giao dịch Stellar
-    const tx = new TransactionBuilder(sourceAccount, {
+  const tx = new TransactionBuilder(sourceAccount, {
       fee: baseFee.toString(),
       networkPassphrase: NETWORK_PASSPHRASE,
       timebounds,
     })
-      .addOperation(
-        Operation.payment({
-          destination: recipientAddress,
-          asset: Asset.native(),
-          amount: amount.toString(),
-        })
-      )
+      .addOperation(Operation.payment({ destination: recipientAddress, asset: Asset.native(), amount: amount.toString() }))
       .addMemo(Memo.text(memo))
       .build();
 
@@ -134,7 +101,6 @@ app.post("/api/a2u-test", async (req, res) => {
 
     const txResult = await server.submitTransaction(tx);
     const txid = txResult.id;
-
     console.log("✅ Transaction submitted:", txid);
 
     // 4️⃣ Complete payment
@@ -142,21 +108,13 @@ app.post("/api/a2u-test", async (req, res) => {
     console.log("PaymentIdentifier:", paymentIdentifier, "TXID:", txid);
 
     await axiosClient.post(`/v2/payments/${paymentIdentifier}/complete`, { txid });
+
     return res.json({ success: true, paymentId: paymentIdentifier, txid });
   } catch (err) {
     console.error("❌ Lỗi A2U:", err.response?.data || err.message);
-    return res.status(500).json({
-      success: false,
-      message: "Lỗi xử lý A2U",
-      error: err.response?.data || err.message,
-    });
+    return res.status(500).json({ success: false, message: "Lỗi xử lý A2U", error: err.response?.data || err.message });
   }
 });
 
-// =============================
-// Server start
-// =============================
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`✅ A2U Testnet backend đang chạy tại cổng ${PORT}`);
-});
+app.listen(PORT, () => console.log(`✅ A2U Testnet backend chạy tại cổng ${PORT}`));
