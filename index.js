@@ -1,9 +1,7 @@
 import express from "express";
 import cors from "cors";
 import axios from "axios";
-import pkg from "@stellar/stellar-sdk";
-
-const { Server, Keypair, Asset, Operation, TransactionBuilder, Memo } = pkg;
+import { Server, Keypair, Asset, Operation, TransactionBuilder, Memo } from "@stellar/stellar-sdk";
 
 const app = express();
 app.use(express.json());
@@ -43,12 +41,8 @@ app.post("/api/a2u-test", async (req, res) => {
   try {
     // 1️⃣ Tạo payment Pi
     const body = { uid, username, amount, memo, metadata: { type: "A2U" } };
-    console.log("💡 Payload create payment:", body);
     const createRes = await axiosClient.post("/v2/payments", body);
     const paymentIdentifier = createRes.data.identifier;
-    const recipientAddress = accountId; // Dùng accountId trực tiếp
-
-    console.log("✅ Payment created:", paymentIdentifier, "Recipient:", recipientAddress);
 
     // 2️⃣ Giao dịch Stellar
     const server = new Server(HORIZON_URL);
@@ -62,7 +56,7 @@ app.post("/api/a2u-test", async (req, res) => {
       timebounds,
     })
       .addOperation(Operation.payment({
-        destination: recipientAddress,
+        destination: accountId,
         asset: Asset.native(),
         amount: amount.toString(),
       }))
@@ -73,8 +67,7 @@ app.post("/api/a2u-test", async (req, res) => {
     tx.sign(keypair);
 
     const txResult = await server.submitTransaction(tx);
-    const txid = txResult.id;
-    console.log("✅ Transaction submitted:", txid);
+    const txid = txResult.hash;
 
     // 3️⃣ Complete payment Pi
     await axiosClient.post(`/v2/payments/${paymentIdentifier}/complete`, { txid });
@@ -98,7 +91,7 @@ app.post("/api/create-token", async (req, res) => {
 
   try {
     const server = new Server(HORIZON_URL);
-    const issuerKeypair = Keypair.fromSecret(APP_PRIVATE_KEY); // Dùng ví app làm issuer
+    const issuerKeypair = Keypair.fromSecret(APP_PRIVATE_KEY); // Ví app là issuer
     const asset = new Asset(tokenCode.toUpperCase(), issuerKeypair.publicKey());
 
     // 1️⃣ Load user account
