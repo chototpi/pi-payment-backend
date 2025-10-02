@@ -86,5 +86,72 @@ app.post("/api/a2u-test", async (req, res) => {
   }
 });
 
+// =============================
+// 📌 Tạo token trên Pi Testnet v23
+// =============================
+app.post("/api/create-token", async (req, res) => {
+  const { tokenCode, amount, userPublicKey } = req.body;
+
+  if (!tokenCode || !amount || !userPublicKey) {
+    return res.status(400).json({ success: false, message: "Thiếu tokenCode, amount hoặc userPublicKey" });
+  }
+
+  try {
+    const server = new Server(HORIZON_URL);
+    const issuerKeypair = Keypair.fromSecret(APP_PRIVATE_KEY); // Dùng ví app làm issuer
+    const asset = new Asset(tokenCode.toUpperCase(), issuerKeypair.publicKey());
+
+    // 1️⃣ Load user account
+    const userAccount = await server.loadAccount(userPublicKey);
+    const baseFee = await server.fetchBaseFee();
+
+    // 2️⃣ Tạo trustline từ user tới token
+    const txTrustline = new TransactionBuilder(userAccount, {
+      fee: baseFee.toString(),
+      networkPassphrase: NETWORK_PASSPHRASE,
+      timebounds: await server.fetchTimebounds(180),
+    })
+      .addOperation(Operation.changeTrust({
+        asset,
+        limit: amount.toString(),
+      }))
+      .build();
+
+    await server.submitTransaction(txTrustline);
+    console.log(`✅ Trustline created for user ${userPublicKey}`);
+
+    // 3️⃣ Issuer gửi token cho user
+    const issuerAccount = await server.loadAccount(issuerKeypair.publicKey());
+
+    const txPayment = new TransactionBuilder(issuerAccount, {
+      fee: baseFee.toString(),
+      networkPassphrase: NETWORK_PASSPHRASE,
+      timebounds: await server.fetchTimebounds(180),
+    })
+      .addOperation(Operation.payment({
+        destination: userPublicKey,
+        asset,
+        amount: amount.toString(),
+      }))
+      .build();
+
+    txPayment.sign(issuerKeypair);
+    const paymentResult = await server.submitTransaction(txPayment);
+
+    console.log(`✅ Token ${tokenCode} sent to user: ${paymentResult.hash}`);
+
+    return res.json({
+      success: true,
+      tokenCode: tokenCode.toUpperCase(),
+      amount,
+      user: userPublicKey,
+      txid: paymentResult.hash,
+    });
+  } catch (err) {
+    console.error("❌ Lỗi tạo token:", err.response?.data || err.message);
+    return res.status(500).json({ success: false, message: "Lỗi tạo token", error: err.response?.data || err.message });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`✅ A2U Testnet backend chạy tại cổng ${PORT}`));
