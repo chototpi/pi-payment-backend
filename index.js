@@ -1,7 +1,7 @@
-import express from "express";
-import cors from "cors";
-import axios from "axios";
-import stellarSdk from "@stellar/stellar-sdk";
+const express = require("express");
+const cors = require("cors");
+const axios = require("axios");
+const stellarSdk = require("@stellar/stellar-sdk");
 
 const { Server, Keypair, Asset, Operation, TransactionBuilder, Memo } = stellarSdk;
 
@@ -28,64 +28,6 @@ const axiosClient = axios.create({
 });
 
 // =============================
-// 📌 A2U Testnet Endpoint
-// =============================
-app.post("/api/a2u-test", async (req, res) => {
-  const { amount, accountId, username, uid } = req.body;
-  const memo = "A2U-test";
-
-  console.log("🔍 A2U REQUEST:", { uid, username, amount, accountId });
-
-  if (!amount || !accountId) {
-    return res.status(400).json({ success: false, message: "Thiếu accountId hoặc amount" });
-  }
-
-  try {
-    // 1️⃣ Tạo payment Pi
-    const body = { uid, username, amount, memo, metadata: { type: "A2U" } };
-    const createRes = await axiosClient.post("/v2/payments", body);
-    const paymentIdentifier = createRes.data.identifier;
-    const recipientAddress = accountId;
-
-    console.log("✅ Payment created:", paymentIdentifier, "Recipient:", recipientAddress);
-
-    // 2️⃣ Giao dịch Stellar
-    const server = new Server(HORIZON_URL);
-    const sourceAccount = await server.loadAccount(APP_PUBLIC_KEY);
-    const baseFee = await server.fetchBaseFee();
-    const timebounds = await server.fetchTimebounds(180);
-
-    const tx = new TransactionBuilder(sourceAccount, {
-      fee: baseFee.toString(),
-      networkPassphrase: NETWORK_PASSPHRASE,
-      timebounds,
-    })
-      .addOperation(Operation.payment({
-        destination: recipientAddress,
-        asset: Asset.native(),
-        amount: amount.toString(),
-      }))
-      .addMemo(Memo.text(memo))
-      .build();
-
-    const keypair = Keypair.fromSecret(APP_PRIVATE_KEY);
-    tx.sign(keypair);
-
-    const txResult = await server.submitTransaction(tx);
-    const txid = txResult.id;
-    console.log("✅ Transaction submitted:", txid);
-
-    // 3️⃣ Complete payment Pi
-    await axiosClient.post(`/v2/payments/${paymentIdentifier}/complete`, { txid });
-
-    return res.json({ success: true, paymentId: paymentIdentifier, txid });
-  } catch (err) {
-    console.error("❌ Lỗi A2U:", err.response?.data || err.message);
-    return res.status(500).json({ success: false, message: "Lỗi xử lý A2U", error: err.response?.data || err.message });
-  }
-});
-
-// =============================
 // 📌 Tạo token trên Pi Testnet v23
 // =============================
 app.post("/api/create-token", async (req, res) => {
@@ -97,14 +39,14 @@ app.post("/api/create-token", async (req, res) => {
 
   try {
     const server = new Server(HORIZON_URL);
-    const issuerKeypair = Keypair.fromSecret(APP_PRIVATE_KEY); // ví app = issuer
+    const issuerKeypair = Keypair.fromSecret(APP_PRIVATE_KEY);
     const asset = new Asset(tokenCode.toUpperCase(), issuerKeypair.publicKey());
 
     // 1️⃣ Load user account
     const userAccount = await server.loadAccount(userPublicKey);
     const baseFee = await server.fetchBaseFee();
 
-    // 2️⃣ Trustline từ user -> token
+    // 2️⃣ Tạo trustline từ user → token
     const txTrustline = new TransactionBuilder(userAccount, {
       fee: baseFee.toString(),
       networkPassphrase: NETWORK_PASSPHRASE,
@@ -116,9 +58,8 @@ app.post("/api/create-token", async (req, res) => {
       }))
       .build();
 
-    // ❌ Lưu ý: Trustline này cần user ký → Backend không thể ký thay user
-    // Nếu muốn tự động, phải có secret key user (không an toàn)
-    // 👉 Ở đây mình chỉ trả lại XDR để user ký trên Pi Wallet
+    // ❌ Backend không thể ký thay user (an toàn)
+    // Trả về XDR để user ký trong ví Pi
     return res.json({
       success: true,
       step: "trustline_required",
