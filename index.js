@@ -1,7 +1,9 @@
 import express from "express";
 import cors from "cors";
 import axios from "axios";
-import { Server, Keypair, Asset, Operation, TransactionBuilder, Memo } from "@stellar/stellar-sdk";
+import stellarSdk from "@stellar/stellar-sdk";
+
+const { Server, Keypair, Asset, Operation, TransactionBuilder, Memo } = stellarSdk;
 
 const app = express();
 app.use(express.json());
@@ -43,6 +45,9 @@ app.post("/api/a2u-test", async (req, res) => {
     const body = { uid, username, amount, memo, metadata: { type: "A2U" } };
     const createRes = await axiosClient.post("/v2/payments", body);
     const paymentIdentifier = createRes.data.identifier;
+    const recipientAddress = accountId;
+
+    console.log("✅ Payment created:", paymentIdentifier, "Recipient:", recipientAddress);
 
     // 2️⃣ Giao dịch Stellar
     const server = new Server(HORIZON_URL);
@@ -56,7 +61,7 @@ app.post("/api/a2u-test", async (req, res) => {
       timebounds,
     })
       .addOperation(Operation.payment({
-        destination: accountId,
+        destination: recipientAddress,
         asset: Asset.native(),
         amount: amount.toString(),
       }))
@@ -67,7 +72,8 @@ app.post("/api/a2u-test", async (req, res) => {
     tx.sign(keypair);
 
     const txResult = await server.submitTransaction(tx);
-    const txid = txResult.hash;
+    const txid = txResult.id;
+    console.log("✅ Transaction submitted:", txid);
 
     // 3️⃣ Complete payment Pi
     await axiosClient.post(`/v2/payments/${paymentIdentifier}/complete`, { txid });
@@ -91,14 +97,14 @@ app.post("/api/create-token", async (req, res) => {
 
   try {
     const server = new Server(HORIZON_URL);
-    const issuerKeypair = Keypair.fromSecret(APP_PRIVATE_KEY); // Ví app là issuer
+    const issuerKeypair = Keypair.fromSecret(APP_PRIVATE_KEY); // ví app = issuer
     const asset = new Asset(tokenCode.toUpperCase(), issuerKeypair.publicKey());
 
     // 1️⃣ Load user account
     const userAccount = await server.loadAccount(userPublicKey);
     const baseFee = await server.fetchBaseFee();
 
-    // 2️⃣ Tạo trustline từ user tới token
+    // 2️⃣ Trustline từ user -> token
     const txTrustline = new TransactionBuilder(userAccount, {
       fee: baseFee.toString(),
       networkPassphrase: NETWORK_PASSPHRASE,
@@ -110,36 +116,16 @@ app.post("/api/create-token", async (req, res) => {
       }))
       .build();
 
-    await server.submitTransaction(txTrustline);
-    console.log(`✅ Trustline created for user ${userPublicKey}`);
-
-    // 3️⃣ Issuer gửi token cho user
-    const issuerAccount = await server.loadAccount(issuerKeypair.publicKey());
-
-    const txPayment = new TransactionBuilder(issuerAccount, {
-      fee: baseFee.toString(),
-      networkPassphrase: NETWORK_PASSPHRASE,
-      timebounds: await server.fetchTimebounds(180),
-    })
-      .addOperation(Operation.payment({
-        destination: userPublicKey,
-        asset,
-        amount: amount.toString(),
-      }))
-      .build();
-
-    txPayment.sign(issuerKeypair);
-    const paymentResult = await server.submitTransaction(txPayment);
-
-    console.log(`✅ Token ${tokenCode} sent to user: ${paymentResult.hash}`);
-
+    // ❌ Lưu ý: Trustline này cần user ký → Backend không thể ký thay user
+    // Nếu muốn tự động, phải có secret key user (không an toàn)
+    // 👉 Ở đây mình chỉ trả lại XDR để user ký trên Pi Wallet
     return res.json({
       success: true,
-      tokenCode: tokenCode.toUpperCase(),
-      amount,
-      user: userPublicKey,
-      txid: paymentResult.hash,
+      step: "trustline_required",
+      xdr: txTrustline.toXDR(),
+      hint: "Gửi XDR này cho user ký trong ví Pi Browser / Stellar wallet",
     });
+
   } catch (err) {
     console.error("❌ Lỗi tạo token:", err.response?.data || err.message);
     return res.status(500).json({ success: false, message: "Lỗi tạo token", error: err.response?.data || err.message });
@@ -147,4 +133,4 @@ app.post("/api/create-token", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`✅ A2U Testnet backend chạy tại cổng ${PORT}`));
+app.listen(PORT, () => console.log(`✅ Backend chạy tại cổng ${PORT}`));
