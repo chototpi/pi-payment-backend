@@ -22,8 +22,24 @@ const PI_API_KEY = process.env.PI_API_KEY;
 const APP_PUBLIC_KEY = process.env.APP_PUBLIC_KEY;
 const APP_PRIVATE_KEY = process.env.APP_PRIVATE_KEY;
 
+// ⚠️ Đổi sang mainnet nếu chạy thật
 const HORIZON_URL = "https://api.mainnet.minepi.com";
-const NETWORK_PASSPHRASE = "Pi Testnet";
+const NETWORK_PASSPHRASE = "Pi Network";
+
+// ===== TELEGRAM CONFIG =====
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+
+// ===== WHALE CONFIG =====
+const WHALE_THRESHOLD = 100000;
+
+// ⚠️ Cập nhật ví sàn thật ở đây
+const EXCHANGE_MAP = {
+  "GAUI2USYXS2N4DIRDPJA7JZRSE52GOD6FBOO7ODMHZ3UARXL5QZO7AAO": "Pay Of Pi",
+};
+
+// chống spam
+const processedTx = new Set();
 
 // Axios client cho Pi Server
 const axiosClient = axios.create({
@@ -36,107 +52,92 @@ const axiosClient = axios.create({
 });
 
 // =============================
-// 📌 A2U Testnet Endpoint
+// 📌 TELEGRAM ALERT
 // =============================
-app.post("/api/a2u-test", async (req, res) => {
-  const { amount, accountId, username, uid } = req.body;
-  const memo = "A2U-test";
-
-  console.log("🔍 A2U REQUEST:", { uid, username, amount, accountId });
-
-  if (!amount || !accountId) {
-    return res.status(400).json({ success: false, message: "Thiếu accountId hoặc amount" });
-  }
-
+async function sendTelegramAlert(payment, exchangeName) {
   try {
-    // 1️⃣ Tạo payment Pi
-    const body = { uid, username, amount, memo, metadata: { type: "A2U" } };
-    console.log("💡 Payload create payment:", body);
-    const createRes = await axiosClient.post("/v2/payments", body);
-    const paymentIdentifier = createRes.data.identifier;
+    const message = `
+🚨 *PI WHALE ALERT* 🚨
 
-    console.log("✅ Payment created:", paymentIdentifier);
+🏦 Exchange: *${exchangeName}*
+💰 Amount: *${payment.amount} Pi*
 
-    // 2️⃣ Tạo giao dịch Stellar từ ví app
-    const server = new Server(HORIZON_URL);
-    const sourceAccount = await server.loadAccount(APP_PUBLIC_KEY);
-    const baseFee = await server.fetchBaseFee();
-    const timebounds = await server.fetchTimebounds(180);
+📤 From:
+\`${payment.from}\`
 
-    const tx = new TransactionBuilder(sourceAccount, {
-      fee: baseFee.toString(),
-      networkPassphrase: NETWORK_PASSPHRASE,
-      timebounds,
-    })
-      .addOperation(Operation.payment({
-        destination: accountId,
-        asset: Asset.native(),
-        amount: amount.toString(),
-      }))
-      .addMemo(Memo.text(memo))
-      .build();
+📥 To:
+\`${payment.to}\`
 
-    const keypair = Keypair.fromSecret(APP_PRIVATE_KEY);
-    tx.sign(keypair);
+🔗 TxID:
+\`${payment.id}\`
 
-    const txResult = await server.submitTransaction(tx);
-    const txid = txResult.id;
-    console.log("✅ Transaction submitted:", txid);
+🌐 Explorer:
+https://blockexplorer.minepi.com/tx/${payment.id}
 
-    // 3️⃣ Complete payment Pi
-    await axiosClient.post(`/v2/payments/${paymentIdentifier}/complete`, { txid });
+⏰ Time: ${new Date().toLocaleString()}
+    `;
 
-    return res.json({ success: true, paymentId: paymentIdentifier, txid });
-  } catch (err) {
-    console.error("❌ Lỗi A2U:", err.response?.data || err.message);
-    return res.status(500).json({ success: false, message: "Lỗi xử lý A2U", error: err.response?.data || err.message });
-  }
-});
+    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
 
-// =============================
-// 📌 Tạo token Testnet v23
-// =============================
-app.post("/api/create-token", async (req, res) => {
-  const { tokenCode, amount, userPublicKey } = req.body;
-
-  if (!tokenCode || !amount || !userPublicKey) {
-    return res.status(400).json({ success: false, message: "Thiếu tokenCode, amount hoặc userPublicKey" });
-  }
-
-  try {
-    const server = new Server(HORIZON_URL);
-    const issuerKeypair = Keypair.fromSecret(APP_PRIVATE_KEY); // Ví app làm issuer
-    const asset = new Asset(tokenCode.toUpperCase(), issuerKeypair.publicKey());
-
-    // 1️⃣ Load user account
-    const userAccount = await server.loadAccount(userPublicKey);
-    const baseFee = await server.fetchBaseFee();
-
-    // 2️⃣ Tạo trustline từ user → token
-    const txTrustline = new TransactionBuilder(userAccount, {
-      fee: baseFee.toString(),
-      networkPassphrase: NETWORK_PASSPHRASE,
-      timebounds: await server.fetchTimebounds(180),
-    })
-      .addOperation(Operation.changeTrust({
-        asset,
-        limit: amount.toString(),
-      }))
-      .build();
-
-    // Backend không ký thay user, trả XDR để user ký trong ví Pi
-    return res.json({
-      success: true,
-      step: "trustline_required",
-      xdr: txTrustline.toXDR(),
-      hint: "Gửi XDR này cho user ký trong ví Pi Browser / Stellar wallet",
+    await axios.post(url, {
+      chat_id: TELEGRAM_CHAT_ID,
+      text: message,
+      parse_mode: "Markdown",
     });
-  } catch (err) {
-    console.error("❌ Lỗi tạo token:", err.response?.data || err.message);
-    return res.status(500).json({ success: false, message: "Lỗi tạo token", error: err.response?.data || err.message });
-  }
-});
 
+    console.log("📲 Telegram alert sent!");
+  } catch (err) {
+    console.error("❌ Telegram error:", err.message);
+  }
+}
+
+// =============================
+// 📌 WHALE TRACKING REALTIME
+// =============================
+function startWhaleTracking() {
+  const server = new Server(HORIZON_URL);
+
+  console.log("🚀 Start Whale Tracking...");
+
+  server
+    .payments()
+    .cursor("now")
+    .stream({
+      onmessage: async (payment) => {
+        try {
+          if (payment.type !== "payment") return;
+
+          const amount = parseFloat(payment.amount);
+          const to = payment.to;
+
+          const exchangeName = EXCHANGE_MAP[to];
+
+          if (exchangeName && amount >= WHALE_THRESHOLD) {
+            if (processedTx.has(payment.id)) return;
+
+            processedTx.add(payment.id);
+            console.log("🚨 Whale detected:", payment.id, amount);
+
+            await sendTelegramAlert(payment, exchangeName);
+          }
+        } catch (err) {
+          console.error("❌ Payment processing error:", err.message);
+        }
+      },
+
+      onerror: (error) => {
+        console.error("❌ Stream error:", error);
+        setTimeout(startWhaleTracking, 5000); // auto reconnect
+      },
+    });
+}
+
+// =============================
+// 🚀 START SERVER + TRACKING
 // =============================
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`✅ Backend chạy tại cổng ${PORT}`));
+
+app.listen(PORT, () => {
+  console.log(`✅ Backend chạy tại cổng ${PORT}`);
+  startWhaleTracking();
+});
