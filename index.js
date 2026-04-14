@@ -94,9 +94,6 @@ async function sendTelegramAlert(payment, exchangeName, server) {
 📥 To: *${exchangeName}* 
 \`${payment.to}\`
 
-🔗 TxID:
-\`${txHash}\`
-
 🌐 Explorer:
 https://blockexplorer.minepi.com/tx/${txHash}
 
