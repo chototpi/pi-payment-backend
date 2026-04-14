@@ -63,7 +63,7 @@ async function sendTelegramAlert(payment, exchangeName) {
 \`${payment.to}\`
 
 🔗 TxID:
-\`${payment.id}\`
+\`${payment.transaction_hash}\`
 
 🌐 Explorer:
 https://blockexplorer.minepi.com/tx/${payment.id}
