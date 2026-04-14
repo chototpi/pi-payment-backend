@@ -75,7 +75,7 @@ async function sendTelegramAlert(payment, exchangeName) {
 \`${payment.transaction_hash}\`
 
 🌐 Explorer:
-https://blockexplorer.minepi.com/tx/${payment.id}
+https://blockexplorer.minepi.com/tx/${payment.transaction_hash}
 
 ⏰ Time: ${new Date().toLocaleString()}
     `;
