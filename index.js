@@ -22,7 +22,7 @@ const PI_API_KEY = process.env.PI_API_KEY;
 const APP_PUBLIC_KEY = process.env.APP_PUBLIC_KEY;
 const APP_PRIVATE_KEY = process.env.APP_PRIVATE_KEY;
 
-const HORIZON_URL = "https://api.testnet.minepi.com";
+const HORIZON_URL = "https://api.mainnet.minepi.com";
 const NETWORK_PASSPHRASE = "Pi Testnet";
 
 // Axios client cho Pi Server
