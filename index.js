@@ -85,16 +85,13 @@ async function sendTelegramAlert(payment, exchangeName, server) {
     const message = `
 🚨 *PI WHALE ALERT* 🚨
 
-🏦 Exchange: *${exchangeName}*
-💰 Amount: *${amount.toLocaleString()} Pi*
-
-👤 Balance: *${balance.toLocaleString()} Pi*
-🔥 Moved: *${percent}%*
-
 📤 From:
 \`${payment.from}\`
+👤 Balance: *${balance.toLocaleString()} Pi*
+💰 Amount: *${amount.toLocaleString()} Pi*
+🔥 Moved: *${percent}%*
 
-📥 To:
+📥 To: *${exchangeName}* 
 \`${payment.to}\`
 
 🔗 TxID:
