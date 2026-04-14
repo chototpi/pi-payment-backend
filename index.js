@@ -26,7 +26,7 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
 // ===== WHALE CONFIG =====
-const WHALE_THRESHOLD = 5000;
+const WHALE_THRESHOLD = 10000;
 
 // ⚠️ Cập nhật ví sàn thật ở đây
 const EXCHANGE_MAP = {
