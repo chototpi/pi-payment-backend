@@ -4,13 +4,8 @@ const cors = require("cors");
 const axios = require("axios");
 const StellarSdk = require("@stellar/stellar-sdk");
 
-// ===== Stellar SDK =====
-const Server = StellarSdk.Server;
-const Keypair = StellarSdk.Keypair;
-const Asset = StellarSdk.Asset;
-const Operation = StellarSdk.Operation;
-const TransactionBuilder = StellarSdk.TransactionBuilder;
-const Memo = StellarSdk.Memo;
+// ===== Stellar SDK (FIX NEW VERSION) =====
+const { Horizon, Keypair, Asset, Operation, TransactionBuilder, Memo } = StellarSdk;
 
 // ===== App setup =====
 const app = express();
@@ -22,7 +17,7 @@ const PI_API_KEY = process.env.PI_API_KEY;
 const APP_PUBLIC_KEY = process.env.APP_PUBLIC_KEY;
 const APP_PRIVATE_KEY = process.env.APP_PRIVATE_KEY;
 
-// ⚠️ Đổi sang mainnet nếu chạy thật
+// ===== MAINNET =====
 const HORIZON_URL = "https://api.mainnet.minepi.com";
 const NETWORK_PASSPHRASE = "Pi Network";
 
@@ -31,9 +26,8 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
 // ===== WHALE CONFIG =====
-const WHALE_THRESHOLD = 100000;
+const WHALE_THRESHOLD = 1000;
 
-// ⚠️ Cập nhật ví sàn thật ở đây
 const EXCHANGE_MAP = {
   "GAUI2USYXS2N4DIRDPJA7JZRSE52GOD6FBOO7ODMHZ3UARXL5QZO7AAO": "Pay Of Pi",
 };
@@ -41,7 +35,7 @@ const EXCHANGE_MAP = {
 // chống spam
 const processedTx = new Set();
 
-// Axios client cho Pi Server
+// ===== Axios Pi API =====
 const axiosClient = axios.create({
   baseURL: "https://api.minepi.com",
   timeout: 15000,
@@ -92,10 +86,10 @@ https://blockexplorer.minepi.com/tx/${payment.id}
 }
 
 // =============================
-// 📌 WHALE TRACKING REALTIME
+// 📌 WHALE TRACKING REALTIME (FIX)
 // =============================
 function startWhaleTracking() {
-  const server = new Server(HORIZON_URL);
+  const server = new Horizon.Server(HORIZON_URL);
 
   console.log("🚀 Start Whale Tracking...");
 
@@ -116,6 +110,7 @@ function startWhaleTracking() {
             if (processedTx.has(payment.id)) return;
 
             processedTx.add(payment.id);
+
             console.log("🚨 Whale detected:", payment.id, amount);
 
             await sendTelegramAlert(payment, exchangeName);
@@ -127,13 +122,18 @@ function startWhaleTracking() {
 
       onerror: (error) => {
         console.error("❌ Stream error:", error);
-        setTimeout(startWhaleTracking, 5000); // auto reconnect
+
+        // reconnect sau 5s
+        setTimeout(() => {
+          console.log("🔄 Reconnecting stream...");
+          startWhaleTracking();
+        }, 5000);
       },
     });
 }
 
 // =============================
-// 🚀 START SERVER + TRACKING
+// 🚀 START SERVER
 // =============================
 const PORT = process.env.PORT || 3000;
 
