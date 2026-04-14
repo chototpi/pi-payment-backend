@@ -4,31 +4,26 @@ const cors = require("cors");
 const axios = require("axios");
 const StellarSdk = require("@stellar/stellar-sdk");
 
-// ===== Stellar SDK (FIX NEW VERSION) =====
-const { Horizon, Keypair, Asset, Operation, TransactionBuilder, Memo } = StellarSdk;
+// ===== Stellar SDK =====
+const { Horizon } = StellarSdk;
 
 // ===== App setup =====
 const app = express();
 app.use(express.json());
 app.use(cors({ origin: "*" }));
 
-// ===== Biến môi trường =====
+// ===== ENV =====
 const PI_API_KEY = process.env.PI_API_KEY;
-const APP_PUBLIC_KEY = process.env.APP_PUBLIC_KEY;
-const APP_PRIVATE_KEY = process.env.APP_PRIVATE_KEY;
-
-// ===== MAINNET =====
-const HORIZON_URL = "https://api.mainnet.minepi.com";
-const NETWORK_PASSPHRASE = "Pi Network";
-
-// ===== TELEGRAM CONFIG =====
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
-// ===== WHALE CONFIG =====
+// ===== MAINNET =====
+const HORIZON_URL = "https://api.mainnet.minepi.com";
+
+// ===== CONFIG =====
 const WHALE_THRESHOLD = 10000;
 
-// ⚠️ Cập nhật ví sàn thật ở đây
+// ===== EXCHANGE WALLETS =====
 const EXCHANGE_MAP = {
   "GAUI2USYXS2N4DIRDPJA7JZRSE52GOD6FBOO7ODMHZ3UARXL5QZO7AAO": "Pay Of Pi",
   "GALYJFJ5SVD45FBWN2GT4IW67SEZ3IBOFSBSPUFCWV427NBNLG3PXEQU": "OKX",
@@ -41,29 +36,60 @@ const EXCHANGE_MAP = {
   "GDL66HS4YTULXZ7NY7TZRUPCVD3BMANUIZUPCXU5HG46CVMI3YHBBWB6": "Pionex_2"
 };
 
-// chống spam
+// ===== CACHE =====
 const processedTx = new Set();
+const balanceCache = new Map();
 
-// ===== Axios Pi API =====
-const axiosClient = axios.create({
-  baseURL: "https://api.minepi.com",
-  timeout: 15000,
-  headers: {
-    Authorization: `Key ${PI_API_KEY}`,
-    "Content-Type": "application/json",
-  },
-});
+// =============================
+// 📌 LẤY BALANCE
+// =============================
+async function getBalance(address, server) {
+  try {
+    if (balanceCache.has(address)) {
+      return balanceCache.get(address);
+    }
+
+    const account = await server.loadAccount(address);
+
+    const native = account.balances.find(
+      (b) => b.asset_type === "native"
+    );
+
+    const balance = native ? parseFloat(native.balance) : 0;
+
+    balanceCache.set(address, balance);
+
+    return balance;
+  } catch (err) {
+    console.error("❌ Balance error:", err.message);
+    return 0;
+  }
+}
 
 // =============================
 // 📌 TELEGRAM ALERT
 // =============================
-async function sendTelegramAlert(payment, exchangeName) {
+async function sendTelegramAlert(payment, exchangeName, server) {
   try {
+    const txHash = payment.transaction_hash || payment.id;
+
+    const balance = await getBalance(payment.from, server);
+
+    const amount = parseFloat(payment.amount);
+
+    // % tài sản đã chuyển
+    const percent = balance > 0
+      ? ((amount / (balance + amount)) * 100).toFixed(2)
+      : 0;
+
     const message = `
 🚨 *PI WHALE ALERT* 🚨
 
 🏦 Exchange: *${exchangeName}*
-💰 Amount: *${payment.amount} Pi*
+💰 Amount: *${amount.toLocaleString()} Pi*
+
+👤 Balance: *${balance.toLocaleString()} Pi*
+🔥 Moved: *${percent}%*
 
 📤 From:
 \`${payment.from}\`
@@ -72,30 +98,32 @@ async function sendTelegramAlert(payment, exchangeName) {
 \`${payment.to}\`
 
 🔗 TxID:
-\`${payment.transaction_hash}\`
+\`${txHash}\`
 
 🌐 Explorer:
-https://blockexplorer.minepi.com/tx/${payment.transaction_hash}
+https://blockexplorer.minepi.com/tx/${txHash}
 
 ⏰ Time: ${new Date().toLocaleString()}
     `;
 
-    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+    await axios.post(
+      `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
+      {
+        chat_id: TELEGRAM_CHAT_ID,
+        text: message,
+        parse_mode: "Markdown",
+      }
+    );
 
-    await axios.post(url, {
-      chat_id: TELEGRAM_CHAT_ID,
-      text: message,
-      parse_mode: "Markdown",
-    });
+    console.log("📲 Telegram sent:", txHash);
 
-    console.log("📲 Telegram alert sent!");
   } catch (err) {
     console.error("❌ Telegram error:", err.message);
   }
 }
 
 // =============================
-// 📌 WHALE TRACKING REALTIME (FIX)
+// 📌 WHALE TRACKING
 // =============================
 function startWhaleTracking() {
   const server = new Horizon.Server(HORIZON_URL);
@@ -120,21 +148,20 @@ function startWhaleTracking() {
 
             processedTx.add(payment.id);
 
-            console.log("🚨 Whale detected:", payment.id, amount);
+            console.log("🚨 Whale:", amount, exchangeName);
 
-            await sendTelegramAlert(payment, exchangeName);
+            await sendTelegramAlert(payment, exchangeName, server);
           }
         } catch (err) {
-          console.error("❌ Payment processing error:", err.message);
+          console.error("❌ Process error:", err.message);
         }
       },
 
       onerror: (error) => {
         console.error("❌ Stream error:", error);
 
-        // reconnect sau 5s
         setTimeout(() => {
-          console.log("🔄 Reconnecting stream...");
+          console.log("🔄 Reconnecting...");
           startWhaleTracking();
         }, 5000);
       },
