@@ -98,7 +98,7 @@ async function sendTelegramAlert(payment, exchangeName, server) {
 \`${payment.to}\`
 
 🌐 Explorer:
-https://blockexplorer.minepi.com/tx/${txHash}
+https://piscan.io/tx/${txHash}
 
 ⏰ Time: ${new Date().toLocaleString()}
     `;
