@@ -160,7 +160,7 @@ function startWhaleTracking() {
         setTimeout(() => {
           console.log("🔄 Reconnecting...");
           startWhaleTracking();
-        }, 60000);
+        }, 30000);
       },
     });
 }
