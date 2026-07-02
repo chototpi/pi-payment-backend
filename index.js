@@ -111,15 +111,11 @@ app.get("/", (req, res) => {
   res.send("Watcher.Pi Backend Running");
 });
 
-// ======================================
-// START SERVER
-// ======================================
-const PORT = process.env.PORT || 3000;
+// =============================
+// 🚀 START SERVER
+// =============================
+const PORT = process.env.PORT  3000;
 
 app.listen(PORT, () => {
-
-  console.log(`✅ Backend chạy tại cổng ${PORT}`);
-
-  startWhaleTracking();
-
+  console.log(✅ Backend chạy tại cổng ${PORT});
 });
