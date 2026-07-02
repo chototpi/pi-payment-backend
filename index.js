@@ -1,31 +1,39 @@
-// ====== backend.js ======
+// ===== backend.js =====
 
 const express = require("express");
 const cors = require("cors");
-const axios = require("axios");
 const StellarSdk = require("@stellar/stellar-sdk");
 
-// ===== App =====
+// =============================
+// APP
+// =============================
 const app = express();
 
 app.use(express.json());
-app.use(cors({ origin: "*" }));
+app.use(cors());
 
-// ===== ENV =====
-const PI_API_KEY = process.env.PI_API_KEY;
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
-
-// ===== PI MAINNET =====
+// =============================
+// PI MAINNET
+// =============================
 const HORIZON_URL = "https://api.mainnet.minepi.com";
 const NETWORK_PASSPHRASE = "Pi Network";
 
 const server = new StellarSdk.Horizon.Server(HORIZON_URL);
 
-// ======================================
+// =============================
+// HEALTH CHECK
+// =============================
+app.get("/", (req, res) => {
+  res.json({
+    success: true,
+    message: "Pi Payment Backend Running"
+  });
+});
+
+// =============================
 // SEND PI
 // POST /send
-// ======================================
+// =============================
 app.post("/send", async (req, res) => {
 
   try {
@@ -39,14 +47,25 @@ app.post("/send", async (req, res) => {
       });
     }
 
+    // kiểm tra amount
+    if (parseFloat(amount) <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid amount"
+      });
+    }
+
+    // tạo keypair
     const keypair =
       StellarSdk.Keypair.fromSecret(secret);
 
+    // load account
     const account =
       await server.loadAccount(
         keypair.publicKey()
       );
 
+    // build transaction
     const tx =
       new StellarSdk.TransactionBuilder(
         account,
@@ -55,26 +74,28 @@ app.post("/send", async (req, res) => {
           networkPassphrase: NETWORK_PASSPHRASE
         }
       )
-        .addOperation(
+      .addOperation(
 
-          StellarSdk.Operation.payment({
+        StellarSdk.Operation.payment({
 
-            destination: to,
+          destination: to,
 
-            asset:
-              StellarSdk.Asset.native(),
+          asset:
+            StellarSdk.Asset.native(),
 
-            amount:
-              amount.toString()
+          amount:
+            amount.toString()
 
-          })
+        })
 
-        )
-        .setTimeout(30)
-        .build();
+      )
+      .setTimeout(30)
+      .build();
 
+    // ký
     tx.sign(keypair);
 
+    // submit
     const result =
       await server.submitTransaction(tx);
 
@@ -82,7 +103,15 @@ app.post("/send", async (req, res) => {
 
       success: true,
 
-      hash: result.hash
+      hash: result.hash,
+
+      ledger: result.ledger,
+
+      source: keypair.publicKey(),
+
+      destination: to,
+
+      amount
 
     });
 
@@ -104,18 +133,16 @@ app.post("/send", async (req, res) => {
 
 });
 
-// ======================================
-// HEALTH CHECK
-// ======================================
-app.get("/", (req, res) => {
-  res.send("Watcher.Pi Backend Running");
-});
-
 // =============================
-// 🚀 START SERVER
+// START SERVER
 // =============================
-const PORT = process.env.PORT || 3000;
+const PORT =
+  process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log(✅ Backend chạy tại cổng ${PORT});
+
+  console.log(
+    `✅ Backend chạy tại cổng ${PORT}`
+  );
+
 });
