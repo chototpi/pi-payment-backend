@@ -130,14 +130,6 @@ app.post("/claim", async (req, res) => {
     console.log("Wallet:", publicKey);
 
     // =============================
-    // LOAD ACCOUNT
-    // =============================
-    const account =
-      await server.loadAccount(
-        publicKey
-      );
-
-    // =============================
     // NETWORK FEE
     // =============================
     const feeStats =
@@ -147,7 +139,7 @@ app.post("/claim", async (req, res) => {
       feeStats.last_ledger_base_fee;
 
     // =============================
-    // LOAD CLAIMABLE BALANCES
+    // GET CLAIMABLE BALANCES
     // =============================
     const response =
       await axios.get(
@@ -158,9 +150,7 @@ app.post("/claim", async (req, res) => {
       response.data._embedded.records;
 
     console.log(
-      "Found:",
-      balances.length,
-      "claimable balances"
+      `Found ${balances.length} claimable balances`
     );
 
     if (!balances.length) {
@@ -171,8 +161,9 @@ app.post("/claim", async (req, res) => {
 
         claimed: 0,
 
-        message:
-          "No claimable balances"
+        total: 0,
+
+        results: []
 
       });
 
@@ -187,6 +178,18 @@ app.post("/claim", async (req, res) => {
 
       try {
 
+        console.log(
+          "Claiming:",
+          item.id,
+          item.amount
+        );
+
+        // luôn load account mới
+        const account =
+          await server.loadAccount(
+            publicKey
+          );
+
         const tx =
           new StellarSdk.TransactionBuilder(
             account,
@@ -199,11 +202,9 @@ app.post("/claim", async (req, res) => {
 
           .addOperation(
 
-            StellarSdk.Operation
-            .claimClaimableBalance({
+            StellarSdk.Operation.claimClaimableBalance({
 
-              balanceId:
-                item.id
+              balanceId: item.id
 
             })
 
@@ -216,13 +217,11 @@ app.post("/claim", async (req, res) => {
         tx.sign(keypair);
 
         const result =
-          await server.submitTransaction(
-            tx
-          );
+          await server.submitTransaction(tx);
 
         console.log(
-          "Claim OK:",
-          item.id
+          "✅ Claimed:",
+          result.hash
         );
 
         results.push({
@@ -230,25 +229,41 @@ app.post("/claim", async (req, res) => {
           balanceId:
             item.id,
 
-          hash:
-            result.hash,
-
           amount:
-            item.amount
+            item.amount,
+
+          hash:
+            result.hash
 
         });
 
       } catch (err) {
 
-        console.log(
-          "Claim fail:",
+        console.error(
+          "❌ Claim failed:",
           item.id
         );
+
+        if (err.response?.data) {
+
+          console.dir(
+            err.response.data,
+            { depth: null }
+          );
+
+        } else {
+
+          console.error(err);
+
+        }
 
         results.push({
 
           balanceId:
             item.id,
+
+          amount:
+            item.amount,
 
           error:
             err.response?.data ||
@@ -258,7 +273,7 @@ app.post("/claim", async (req, res) => {
 
       }
 
-      // tránh spam
+      // tránh spam Horizon
       await new Promise(
         r => setTimeout(r, 500)
       );
