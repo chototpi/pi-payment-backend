@@ -128,7 +128,6 @@ app.post("/claim", async (req, res) => {
       keypair.publicKey();
 
     console.log("Wallet:", publicKey);
-    console.log("CLAIM API VS 2");
 
     // =============================
     // NETWORK FEE
@@ -142,10 +141,9 @@ app.post("/claim", async (req, res) => {
     // =============================
     // GET CLAIMABLE BALANCES
     // =============================
-    const response =
-      await axios.get(
-        `${HORIZON_URL}/claimable_balances?claimant=${publicKey}`
-      );
+    const response = await axios.get(
+      `${HORIZON_URL}/claimable_balances?claimant=${publicKey}`
+    );
 
     const balances =
       response.data._embedded.records;
@@ -185,7 +183,7 @@ app.post("/claim", async (req, res) => {
           item.amount
         );
 
-        // luôn load account mới
+        // luôn lấy sequence mới
         const account =
           await server.loadAccount(
             publicKey
@@ -200,49 +198,40 @@ app.post("/claim", async (req, res) => {
                 NETWORK_PASSPHRASE
             }
           )
-
           .addOperation(
-
             StellarSdk.Operation.claimClaimableBalance({
-
               balanceId: item.id
-
             })
-
           )
-
           .setTimeout(30)
-
           .build();
 
         tx.sign(keypair);
 
+        console.log("Submitting transaction...");
+
         const result =
           await server.submitTransaction(tx);
 
-        console.log(
-          "✅ Claimed:",
-          result.hash
-        );
+        // DEBUG QUAN TRỌNG
+        console.log("========== RESULT ==========");
+        console.dir(result, { depth: null });
+        console.log("============================");
 
         results.push({
 
-          balanceId:
-            item.id,
+          balanceId: item.id,
 
-          amount:
-            item.amount,
+          amount: item.amount,
 
-          hash:
-            result.hash
+          response: result
 
         });
 
       } catch (err) {
 
-        console.error(
-          "❌ Claim failed:",
-          item.id
+        console.log(
+          "========== ERROR =========="
         );
 
         if (err.response?.data) {
@@ -252,29 +241,40 @@ app.post("/claim", async (req, res) => {
             { depth: null }
           );
 
+          results.push({
+
+            balanceId: item.id,
+
+            amount: item.amount,
+
+            error:
+              err.response.data
+
+          });
+
         } else {
 
           console.error(err);
 
+          results.push({
+
+            balanceId: item.id,
+
+            amount: item.amount,
+
+            error:
+              err.message
+
+          });
+
         }
 
-        results.push({
-
-          balanceId:
-            item.id,
-
-          amount:
-            item.amount,
-
-          error:
-            err.response?.data ||
-            err.message
-
-        });
+        console.log(
+          "==========================="
+          );
 
       }
 
-      // tránh spam Horizon
       await new Promise(
         r => setTimeout(r, 500)
       );
@@ -285,13 +285,9 @@ app.post("/claim", async (req, res) => {
 
       success: true,
 
-      claimed:
-        results.filter(
-          x => x.hash
-        ).length,
+      wallet: publicKey,
 
-      total:
-        balances.length,
+      total: balances.length,
 
       results
 
