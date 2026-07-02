@@ -17,6 +17,7 @@ app.use(cors());
 // =============================
 const HORIZON_URL = "https://api.mainnet.minepi.com";
 const NETWORK_PASSPHRASE = "Pi Network";
+const PI_SECRET = process.env.PI_SECRET;
 
 const server = new StellarSdk.Horizon.Server(HORIZON_URL);
 
@@ -30,23 +31,16 @@ app.get("/", (req, res) => {
   });
 });
 
-// ======================================
-// SEND PI
-// POST /send
-// ======================================
 app.post("/send", async (req, res) => {
 
   try {
 
-    const { secret, to, amount } = req.body;
+    const { to, amount } = req.body;
 
-    // =============================
-    // VALIDATE
-    // =============================
-    if (!secret || !to || !amount) {
+    if (!to || !amount) {
       return res.status(400).json({
         success: false,
-        error: "secret, to and amount are required"
+        error: "to and amount are required"
       });
     }
 
@@ -57,39 +51,28 @@ app.post("/send", async (req, res) => {
       });
     }
 
-    // =============================
-    // LOAD ACCOUNT
-    // =============================
-    const keypair = StellarSdk.Keypair.fromSecret(secret);
+    const keypair =
+      StellarSdk.Keypair.fromSecret(PI_SECRET);
 
-    const account = await server.loadAccount(
-      keypair.publicKey()
-    );
+    const account =
+      await server.loadAccount(
+        keypair.publicKey()
+      );
 
-    // =============================
-    // GET NETWORK FEE
-    // =============================
-    const feeStats = await server.feeStats();
+    const feeStats =
+      await server.feeStats();
 
     const networkFee =
       feeStats.last_ledger_base_fee;
 
-    console.log("Network Fee:", networkFee);
-
-    console.log("Source:", keypair.publicKey());
-    console.log("Destination:", to);
-    console.log("Amount:", amount);
-
-    // =============================
-    // BUILD TRANSACTION
-    // =============================
-    const tx = new StellarSdk.TransactionBuilder(
-      account,
-      {
-        fee: networkFee,
-        networkPassphrase: NETWORK_PASSPHRASE
-      }
-    )
+    const tx =
+      new StellarSdk.TransactionBuilder(
+        account,
+        {
+          fee: networkFee,
+          networkPassphrase: NETWORK_PASSPHRASE
+        }
+      )
       .addOperation(
         StellarSdk.Operation.payment({
           destination: to,
@@ -100,60 +83,27 @@ app.post("/send", async (req, res) => {
       .setTimeout(30)
       .build();
 
-    // =============================
-    // SIGN
-    // =============================
     tx.sign(keypair);
 
-    console.log("Submitting transaction...");
-
-    // =============================
-    // SUBMIT
-    // =============================
     const result =
       await server.submitTransaction(tx);
 
-    console.log("Submit success:");
-    console.dir(result, { depth: null });
-
     return res.json({
-
       success: true,
-
       hash: result.hash,
-
       ledger: result.ledger,
-
-      successful: result.successful,
-
       source: keypair.publicKey(),
-
       destination: to,
-
-      amount: Number(amount),
-
-      fee: networkFee
-
+      amount: Number(amount)
     });
 
   } catch (err) {
 
-    console.error("========== SEND ERROR ==========");
-
-    if (err.response?.data) {
-      console.dir(err.response.data, { depth: null });
-    }
-
     console.error(err);
 
     return res.status(500).json({
-
       success: false,
-
-      error:
-        err.response?.data ||
-        err.message
-
+      error: err.response?.data || err.message
     });
 
   }
