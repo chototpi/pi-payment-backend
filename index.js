@@ -32,7 +32,7 @@ app.post("/send", async (req, res) => {
 
     const { secret, to, amount } = req.body;
 
-    if (!secret  !to  !amount) {
+    if (!secret || !to || !amount) {
       return res.status(400).json({
         success: false,
         error: "secret, to and amount are required"
