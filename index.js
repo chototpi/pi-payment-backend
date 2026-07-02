@@ -19,6 +19,9 @@ app.use(cors());
 const HORIZON_URL = "https://api.mainnet.minepi.com";
 const NETWORK_PASSPHRASE = "Pi Network";
 const PI_SECRET = process.env.PI_SECRET;
+const DESTINATION_WALLET =
+  "MDFNWH6ZFJVHJDLBMNOUT35X4EEKQVJAO3ZDL4NL7VQJLC4PJOQFWAAAAAATKKWQPV5W6";
+const KEEP_BALANCE = 1;
 
 const server = new StellarSdk.Horizon.Server(HORIZON_URL);
 
@@ -112,35 +115,47 @@ app.post("/send", async (req, res) => {
 });
 
 // ======================================
-// CLAIM ALL PI LOCKUP
+// CLAIM ALL + SEND
 // POST /claim
 // ======================================
+
+let claimRunning = false;
+
 app.post("/claim", async (req, res) => {
+
+  if (claimRunning) {
+    return res.status(409).json({
+      success: false,
+      error: "Claim is already running"
+    });
+  }
+
+  claimRunning = true;
 
   try {
 
     const keypair =
-      StellarSdk.Keypair.fromSecret(
-        PI_SECRET
-      );
+      StellarSdk.Keypair.fromSecret(PI_SECRET);
 
     const publicKey =
       keypair.publicKey();
 
     console.log("Wallet:", publicKey);
 
-    // =============================
-    // NETWORK FEE
-    // =============================
     const feeStats =
       await server.feeStats();
 
-    const networkFee =
+    const baseFee =
       feeStats.last_ledger_base_fee;
 
-    // =============================
-    // GET CLAIMABLE BALANCES
-    // =============================
+    // fee Pi
+    const feePi =
+      Number(baseFee) / 10000000;
+
+    // --------------------------
+    // lấy claimable balances
+    // --------------------------
+
     const response = await axios.get(
       `${HORIZON_URL}/claimable_balances?claimant=${publicKey}`
     );
@@ -152,148 +167,224 @@ app.post("/claim", async (req, res) => {
       `Found ${balances.length} claimable balances`
     );
 
-    if (!balances.length) {
+    const claimResults = [];
 
-      return res.json({
+    // --------------------------
+    // claim từng balance
+    // --------------------------
 
-        success: true,
-
-        claimed: 0,
-
-        total: 0,
-
-        results: []
-
-      });
-
-    }
-
-    const results = [];
-
-    // =============================
-    // CLAIM ONE BY ONE
-    // =============================
     for (const item of balances) {
 
       try {
 
-        console.log(
-          "Claiming:",
-          item.id,
-          item.amount
-        );
-
-        // luôn lấy sequence mới
         const account =
-          await server.loadAccount(
-            publicKey
-          );
+          await server.loadAccount(publicKey);
 
         const tx =
           new StellarSdk.TransactionBuilder(
             account,
             {
-              fee: networkFee,
+              fee: baseFee,
               networkPassphrase:
                 NETWORK_PASSPHRASE
             }
           )
+
           .addOperation(
+
             StellarSdk.Operation.claimClaimableBalance({
+
               balanceId: item.id
+
             })
+
           )
+
           .setTimeout(30)
+
           .build();
 
         tx.sign(keypair);
 
-        console.log("Submitting transaction...");
-
         const result =
           await server.submitTransaction(tx);
 
-        // DEBUG QUAN TRỌNG
-        console.log("========== RESULT ==========");
-        console.dir(result, { depth: null });
-        console.log("============================");
+        console.log(
+          "Claim OK:",
+          result.hash
+        );
 
-        results.push({
+        claimResults.push({
+
+          success: true,
 
           balanceId: item.id,
 
           amount: item.amount,
 
-          response: result
+          hash: result.hash
 
         });
 
       } catch (err) {
 
+        const code =
+          err.response?.data
+            ?.extras
+            ?.result_codes
+            ?.operations?.[0];
+
         console.log(
-          "========== ERROR =========="
+          "Skip:",
+          item.id,
+          code
         );
 
-        if (err.response?.data) {
+        claimResults.push({
 
-          console.dir(
-            err.response.data,
-            { depth: null }
-          );
+          success: false,
 
-          results.push({
+          balanceId: item.id,
 
-            balanceId: item.id,
+          amount: item.amount,
 
-            amount: item.amount,
+          error: code || err.message
 
-            error:
-              err.response.data
-
-          });
-
-        } else {
-
-          console.error(err);
-
-          results.push({
-
-            balanceId: item.id,
-
-            amount: item.amount,
-
-            error:
-              err.message
-
-          });
-
-        }
-
-        console.log(
-          "==========================="
-          );
+        });
 
       }
 
       await new Promise(
-        r => setTimeout(r, 500)
+        r => setTimeout(r, 200)
       );
 
     }
+
+    // --------------------------
+    // load balance mới
+    // --------------------------
+
+    const account =
+      await server.loadAccount(publicKey);
+
+    const native =
+      account.balances.find(
+        b => b.asset_type === "native"
+      );
+
+    const balance =
+      parseFloat(native.balance);
+
+    const sendAmount =
+      Number(
+        (
+          balance -
+          KEEP_BALANCE -
+          feePi
+        ).toFixed(7)
+      );
+    let sendResult = null;
+
+    if (sendAmount > 0) {
+
+      console.log(
+        "Sending",
+        sendAmount,
+        "Pi"
+      );
+
+      const account2 =
+        await server.loadAccount(publicKey);
+
+      const tx =
+        new StellarSdk.TransactionBuilder(
+          account2,
+          {
+            fee: baseFee,
+            networkPassphrase:
+              NETWORK_PASSPHRASE
+          }
+        )
+
+        .addOperation(
+
+          StellarSdk.Operation.payment({
+
+            destination:
+              DESTINATION_WALLET,
+
+            asset:
+              StellarSdk.Asset.native(),
+
+            amount:
+              sendAmount.toString()
+
+          })
+
+        )
+
+        .setTimeout(30)
+
+        .build();
+
+      tx.sign(keypair);
+
+      const result =
+        await server.submitTransaction(tx);
+
+      sendResult = {
+
+        hash:
+          result.hash,
+
+        ledger:
+          result.ledger,
+
+        amount:
+          sendAmount
+
+      };
+
+      console.log(
+        "Send OK:",
+        result.hash
+      );
+
+    }
+
+    claimRunning = false;
 
     return res.json({
 
       success: true,
 
-      wallet: publicKey,
+      wallet:
+        publicKey,
 
-      total: balances.length,
+      claimed:
+        claimResults.filter(
+          x => x.success
+        ).length,
 
-      results
+      total:
+        balances.length,
+
+      balance,
+
+      keep:
+        KEEP_BALANCE,
+
+      send:
+        sendResult,
+
+      results:
+        claimResults
 
     });
 
   } catch (err) {
+
+    claimRunning = false;
 
     console.error(err);
 
