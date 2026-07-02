@@ -99,6 +99,8 @@ app.post("/send", async (req, res) => {
     const result =
       await server.submitTransaction(tx);
 
+    console.log(result);
+
     return res.json({
 
       success: true,
