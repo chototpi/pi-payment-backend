@@ -66,17 +66,27 @@ app.post("/send", async (req, res) => {
       keypair.publicKey()
     );
 
+    // =============================
+    // GET NETWORK FEE
+    // =============================
+    const feeStats = await server.feeStats();
+
+    const networkFee =
+      feeStats.last_ledger_base_fee;
+
+    console.log("Network Fee:", networkFee);
+
     console.log("Source:", keypair.publicKey());
     console.log("Destination:", to);
     console.log("Amount:", amount);
 
     // =============================
-    // BUILD TX
+    // BUILD TRANSACTION
     // =============================
     const tx = new StellarSdk.TransactionBuilder(
       account,
       {
-        fee: StellarSdk.BASE_FEE,
+        fee: networkFee,
         networkPassphrase: NETWORK_PASSPHRASE
       }
     )
@@ -107,18 +117,28 @@ app.post("/send", async (req, res) => {
     console.dir(result, { depth: null });
 
     return res.json({
+
       success: true,
+
       hash: result.hash,
+
       ledger: result.ledger,
+
       successful: result.successful,
+
       source: keypair.publicKey(),
+
       destination: to,
-      amount: Number(amount)
+
+      amount: Number(amount),
+
+      fee: networkFee
+
     });
 
   } catch (err) {
 
-    console.error("====== SEND ERROR ======");
+    console.error("========== SEND ERROR ==========");
 
     if (err.response?.data) {
       console.dir(err.response.data, { depth: null });
@@ -127,8 +147,13 @@ app.post("/send", async (req, res) => {
     console.error(err);
 
     return res.status(500).json({
+
       success: false,
-      error: err.response?.data || err.message
+
+      error:
+        err.response?.data ||
+        err.message
+
     });
 
   }
