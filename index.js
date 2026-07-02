@@ -254,10 +254,6 @@ app.post("/claim", async (req, res) => {
 
       }
 
-      await new Promise(
-        r => setTimeout(r, 200)
-      );
-
     }
 
     // --------------------------
