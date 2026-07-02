@@ -128,6 +128,7 @@ app.post("/claim", async (req, res) => {
       keypair.publicKey();
 
     console.log("Wallet:", publicKey);
+    console.log("CLAIM API VS 2");
 
     // =============================
     // NETWORK FEE
