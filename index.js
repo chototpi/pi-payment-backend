@@ -39,29 +39,37 @@ app.post("/signin", async (req, res) => {
   try {
     const { accessToken } = req.body;
 
-    console.log("🔥 TOKEN:", accessToken);
+    if (!accessToken) {
+      return res.status(400).json({
+        error: "Missing accessToken",
+      });
+    }
 
-    const me = await axios.get(
+    console.log("🔥 Verifying Pi access token...");
+
+    const { data } = await axios.get(
       "https://api.minepi.com/v2/me",
       {
         headers: {
-          Authorization: `Bearer ${accessToken}`
-        }
+          Authorization: `Bearer ${accessToken}`,
+        },
       }
     );
 
-    console.log("✅ Pi verify:", me.data);
+    console.log("✅ Pi verified:", data);
 
     return res.json({
-      success: true,
-      user: me.data
+      uid: data.uid,
+      username: data.username,
     });
-
   } catch (err) {
-    console.error("❌ Verify fail:", err.response?.data || err.message);
+    console.error(
+      "❌ Verify failed:",
+      err.response?.data || err.message
+    );
 
     return res.status(401).json({
-      error: "User not authorized"
+      error: "User not authorized",
     });
   }
 });
