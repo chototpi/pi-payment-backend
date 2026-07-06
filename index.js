@@ -35,6 +35,38 @@ app.get("/", (req, res) => {
   });
 });
 
+app.post("/signin", async (req, res) => {
+  try {
+    const { accessToken } = req.body;
+
+    console.log("🔥 TOKEN:", accessToken);
+
+    const me = await axios.get(
+      "https://api.minepi.com/v2/me",
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      }
+    );
+
+    console.log("✅ Pi verify:", me.data);
+
+    return res.json({
+      success: true,
+      user: me.data
+    });
+
+  } catch (err) {
+    console.error("❌ Verify fail:", err.response?.data || err.message);
+
+    return res.status(401).json({
+      error: "User not authorized"
+    });
+  }
+});
+
+//Send Pi
 app.post("/send", async (req, res) => {
 
   try {
