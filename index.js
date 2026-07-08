@@ -74,7 +74,7 @@ app.post("/signin", async (req, res) => {
   }
 });
 
-app.get("/wallet-backend-v2/api/base-wallet-balance", async (req, res) => {
+app.get("/balance", async (req, res) => {
   try {
     const BASE_ACCOUNT =
       "GAUI2USYXS2N4DIRDPJA7JZRSE52GOD6FBOO7ODMHZ3UARXL5QZO7AAO";
