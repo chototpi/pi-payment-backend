@@ -74,6 +74,34 @@ app.post("/signin", async (req, res) => {
   }
 });
 
+app.get("/wallet-backend-v2/api/base-wallet-balance", async (req, res) => {
+  try {
+    const BASE_ACCOUNT =
+      "GAUI2USYXS2N4DIRDPJA7JZRSE52GOD6FBOO7ODMHZ3UARXL5QZO7AAO";
+    const account = await server.loadAccount(BASE_ACCOUNT);
+    const nativeBalance = account.balances.find(
+      b => b.asset_type === "native"
+    );
+    if (!nativeBalance) {
+      return res.status(404).json({
+        success: false,
+        error: "Không tìm thấy số dư Pi"
+      });
+    }
+    return res.json({
+      success: true,
+      address: BASE_ACCOUNT,
+      balance: nativeBalance.balance
+    });
+  } catch (err) {
+    console.error("❌ Lỗi lấy số dư ví:", err.message);
+    return res.status(500).json({
+      success: false,
+      error: "Không thể lấy số dư ví"
+    });
+  }
+});
+
 //Send Pi
 app.post("/send", async (req, res) => {
 
